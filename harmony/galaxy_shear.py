@@ -1,23 +1,24 @@
-import observable import *
+from .observable import *
 
 class Shear(Observable):
-    def __init__(self, config, nside, mode='mastercat', data_dir='../data', *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, data_dir='../data', *args, **kwargs):
         self.obs_name = 'galaxy_shear'
         self.map_names = ['count', 'e1', 'e2']
 
-        super(Galaxy, self).__init__(config, nside, self.obs_name, self.map_names, mode, *args, **kwargs)
+        super(Shear, self).__init__(config, nside, mode, nzbins, self.obs_name, self.map_names, *args, **kwargs)
 
         self.data_dir = data_dir
 
         self.cats = {}
 
         if mode.startswith('buzzard'):
-            self._init_buzzard(self.nzbins)
+            self._init_buzzard()
 
         if mode=='data_sub' or mode=='mastercat':
             self._init_data()
 
-        if mode=='mock'
+        if mode=='mock':
+            self._init_mock()
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
@@ -47,8 +48,8 @@ class Shear(Observable):
             cat['ra'] = _cat['RA']
             cat['dec'] = _cat['DEC']
 
-            cat['e1'] = _cat['E1']
-            cat['e2'] = -1.0 * _cat['E2']
+            cat['e1'] = _cat['g1']
+            cat['e2'] = -1.0 * _cat['g2']
 
             self.cats[ibin] = cat
 
@@ -61,14 +62,15 @@ class Shear(Observable):
             cat['ra'] = _cat['RA']
             cat['dec'] = _cat['DEC']
 
-            cat['e1'] = _cat['E1']
-            cat['e2'] = _cat['E2']
+            cat['e1'] = _cat['e1']
+            cat['e2'] = _cat['e2']
 
             self.cats[ibin] = cat
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
-        for ibin, cat in trange(self.cats.items(), desc='Harmony.make_maps'):
+        for ibin in trange(self.nzbins, desc='Harmony.make_maps'):
+            cat = self.cats[ibin]
             quantities, count, mask = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
                                                     quantity=[cat[_x] for _x in keys],
                                                     nside=self.nside, fill_UNSEEN=True, mask=None, weight=None)
@@ -76,21 +78,28 @@ class Shear(Observable):
                 self.maps[ibin][key] = quantities[j]
 
             self.maps[ibin]['count'] = count
-            self.masks[ibin]['count'] = mask
+            self.masks[ibin] = mask
 
         if save:
             self.save_maps()
 
-    def _compute_auto_cls(self, hm, ibin, nrand=0, save=True):
+    def get_field(self, hm, ibin):
+        return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
+                            templates=self.templates,
+                            purify_e=hm.purify_e, purify_b=hm.purify_b)
+
+
+    def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         npix = hp.nside2npix(self.nside)
 
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
 
         wsp = nmt.NmtWorkspace()
-        field_0 = nmt.NmtField(mask_apo, [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                               templates=self.templates,
-                               purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # field_0 = nmt.NmtField(mask_apo, [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
+        #                        templates=self.templates,
+        #                        purify_e=hm.purify_e, purify_b=hm.purify_b)
+        field_0 = self.get_field(hm, ibin)
 
         wsp.compute_coupling_matrix(field_0, field_0, hm.b)
 
@@ -124,6 +133,7 @@ class Shear(Observable):
 
     def plot_auto_cls(self, hm, showchi2=False):
         cls = hm.cls[(self.obs_name, self.obs_name)]
+        ell = hm.cls['ell']
 
         fig, axes = plt.subplots(self.nzbins, 3, figsize=(12, self.nzbins*3))
         axes = axes.reshape((self.nzbins, 3))
@@ -142,22 +152,22 @@ class Shear(Observable):
                 if 'random' in cls[0]:
                     nrandoms = len(cls[i]['random'])
                     for j in range(nrandoms):
-                        ax.plot(self.ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=1./nrandoms)
-                    ax.plot(self.ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
+                        ax.plot(ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=max(0.01,1./nrandoms))
+                    ax.plot(ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
                 if showchi2:
                     _chi2 = get_chi2_smoothcov(cls[i]['true'][idx_EB[k]], cls[i]['random'][:,idx_EB[k],:])
-                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(self.ell), _chi2, scipy.stats.chi2.sf(_chi2, df=self.b.get_n_bands()))
+                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
                     chi2[titles[k]][i] = _chi2
                 else:
                     label=None
-                ax.plot(self.ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
+                ax.plot(ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
                 if showchi2:
                     ax.legend()
 
         plt.tight_layout()
 
         make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'cls_EB_{}_{}_nside{}.png'.format(self.config.name, self.mode, self.nside))
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_auto_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
         plt.savefig(figfile, dpi=300)
 
         if showchi2:
@@ -165,6 +175,7 @@ class Shear(Observable):
 
     def plot_cls_BB_only(self, hm, showchi2=False):
         cls = hm.cls[(self.obs_name, self.obs_name)]
+        ell = hm.cls['ell']
 
         fig, axes = plt.subplots(1, self.nzbins, figsize=(self.nzbins*4, 3))
         idx_EB = [0, 1, 3]
@@ -183,23 +194,23 @@ class Shear(Observable):
             if 'random' in cls[0]:
                 nrandoms = len(cls[i]['random'])
                 for j in range(nrandoms):
-                    ax.plot(self.ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=1./nrandoms)
-                ax.plot(self.ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
+                    ax.plot(ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=max(0.01,1./nrandoms))
+                ax.plot(ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
             if showchi2:
                 _chi2 = get_chi2_smoothcov(cls[i]['true'][idx_EB[k]], cls[i]['random'][:,idx_EB[k],:])
-                label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(self.ell), _chi2, scipy.stats.chi2.sf(_chi2, df=self.b.get_n_bands()))
+                label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
                 chi2[titles[k]][i] = _chi2
             else:
                 label=None
-            ax.plot(self.ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
-            ax.set_xlim(0, self.b.lmax)
+            ax.plot(ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
+            ax.set_xlim(0, hm.b.lmax)
             if showchi2:
                 ax.legend()
 
         plt.tight_layout()
 
         make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'cls_BB_{}_{}_nside{}.png'.format(self.config.name, self.mode, self.nside))
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_BBonly_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
         plt.savefig(figfile, dpi=300)
 
         if showchi2:

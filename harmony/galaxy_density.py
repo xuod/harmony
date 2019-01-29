@@ -1,12 +1,12 @@
-import observable import *
+from .observable import *
 
 class Galaxy(Observable):
-    def __init__(self, config, nside, mode='redmagic', data_dir='../data', mask_dir='../masks', *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, data_dir='../data', mask_dir='../masks', *args, **kwargs):
 
         self.obs_name = 'galaxy_density'
         self.map_names = ['count', 'density', 'completeness']
 
-        super(Galaxy, self).__init__(config, nside, self.obs_name, self.map_names, *args, **kwargs)
+        super(Galaxy, self).__init__(config, nside, mode, nzbins, self.obs_name, self.map_names, *args, **kwargs)
 
         self.data_dir = data_dir
         self.mask_dir = mask_dir
@@ -36,7 +36,7 @@ class Galaxy(Observable):
             self.maps[ibin]['completeness'] = comp
 
     def make_maps(self, save=True):
-        for ibin in trange(self.nzbins):
+        for ibin in trange(self.nzbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
             _, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'], None, self.nside,
                                             mask=self.masks[ibin],
@@ -50,13 +50,16 @@ class Galaxy(Observable):
         if save:
             self.save_maps()
 
+    def get_field(self, hm, ibin):
+        return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
+
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         npix = hp.nside2npix(self.nside)
 
         mask_apo = self.masks_apo[ibin]
 
         wsp = nmt.NmtWorkspace()
-        field_0 = nmt.NmtField(mask_apo, [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
+        field_0 = get_field(self, hm, ibin) #nmt.NmtField(mask_apo, [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
 
         wsp.compute_coupling_matrix(field_0, field_0, hm.b)
 
@@ -64,7 +67,7 @@ class Galaxy(Observable):
         cls['true'] = compute_master(field_0, field_0, wsp)
 
         if nrandom > 0:
-            Nobj = len(cat)
+            Nobj = len(self.cats[ibin])
 
             _cls = []
 
@@ -117,7 +120,7 @@ class Galaxy(Observable):
             if 'random' in cls[0]:
                 nrandoms = cls[k]['random'].shape[0]
                 for j in range(nrandoms):
-                    ax.plot(ell, cls[k]['random'][j,0,:], c='r', alpha=np.max(0.01, 1./nrandoms))
+                    ax.plot(ell, cls[k]['random'][j,0,:], c='r', alpha=max(0.01, 1./nrandoms))
                 ax.plot(ell, np.mean(cls[k]['random'][:,0,:], axis=0), c='r', ls='--')
 
             if 'true' in cls[0]:
@@ -133,7 +136,7 @@ class Galaxy(Observable):
         plt.tight_layout()
 
         make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'Clgg_{}_{}_nside{}.png'.format(self.config.name, self.mode, self.nside))
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_auto_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
         plt.savefig(figfile, dpi=300)
 
 def random_pos(completeness, nobj):

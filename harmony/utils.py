@@ -2,6 +2,7 @@ import os
 import pymaster as nmt
 import scipy.stats
 from sklearn.covariance import GraphicalLassoCV
+import numpy as np
 
 try:
     FileNotFoundError
@@ -18,7 +19,17 @@ def compute_master(f_a, f_b, wsp, clb=None) :
     cl_decoupled=wsp.decouple_cell(cl_coupled,cl_bias=clb)
     return cl_decoupled
 
+
 def get_chi2_smoothcov(obs, randoms):
     model = GraphicalLassoCV(cv=5)
     model.fit(randoms)
-    return ca.maths.calc_chi2(obs, model.covariance_, np.mean(randoms, axis=0))
+
+    def calc_chi2(x, cov, xmean=None):
+        if xmean is not None :
+            y = x - xmean
+        else :
+            y = x
+        icov = np.linalg.inv(cov)
+        return np.dot(y.T, np.dot(icov, y))
+
+    return calc_chi2(obs, model.covariance_, np.mean(randoms, axis=0))

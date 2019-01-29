@@ -8,11 +8,12 @@ import os, sys
 import castor as ca
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import multiprocesssing
-from utils import *
+import multiprocessing
+from .utils import *
+import numpy as np
 
 class Observable(object):
-    def __init__(self, config, nside, obs_name, map_names, mode='', nzbins=0, nproc=0):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, nproc=0):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -32,6 +33,7 @@ class Observable(object):
         for i in range(nzbins):
             self.masks[i] = None
             self.masks_apo[i] = None
+            self.maps[i] = {}
             for name in map_names:
                 self.maps[i][name] = None
 
@@ -39,8 +41,10 @@ class Observable(object):
         if nproc > 1:
             self.pool = multiprocessing.Pool(nproc)
 
-    def load_catalogs(self):
-        print('Method load_catalogs not implemented, nothing to do.')
+        self.templates = None
+
+    # def load_catalogs(self):
+    #     print('Method load_catalogs not implemented, nothing to do.')
 
     def make_maps(self):
         print('Method make_maps not implemented, nothing to do.')
@@ -57,7 +61,7 @@ class Observable(object):
         for ibin in trange(self.nzbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
             for map_name in self.map_names:
-                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}_{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin, 'count')))
+                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}_{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin, 'count')), verbose=False)
 
     def plot_maps(self):
         make_directory(self.config.path_figures+'/'+self.name)
@@ -113,6 +117,9 @@ class Observable(object):
     def get_field(self, hm, ibin):
         raise NotImplementedError
 
+    def get_randomized_field(self, hm, ibin, *args, **kwargs):
+        raise NotImplementedError
+
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError
 
@@ -131,9 +138,9 @@ class Observable(object):
     #     except FileNotFoundError:
     #         print("Cls file does not exists: {}".format(filename))
 
-    def compute_pseudo_cls_template(self):
-        # self.masks_apo = {}
-        for ibin in trange(self.nzbins, desc='{}.compute_pseudo_cls_template'.format(self.obs_name)):
-            # self.masks_apo[ibin] = {}
-            for map_name in self.map_names:
-            alm_g[ibin] = hp.map2alm(gal.density_maps[ibin])
+    # def compute_pseudo_cls_template(self):
+    #     # self.masks_apo = {}
+    #     for ibin in trange(self.nzbins, desc='{}.compute_pseudo_cls_template'.format(self.obs_name)):
+    #         # self.masks_apo[ibin] = {}
+    #         for map_name in self.map_names:
+    #         alm_g[ibin] = hp.map2alm(gal.density_maps[ibin])
