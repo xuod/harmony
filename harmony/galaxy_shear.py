@@ -90,9 +90,9 @@ class Shear(Observable):
                 cat = self.cats[ibin]
                 self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
 
-    def get_field(self, hm, ibin):
+    def get_field(self, hm, ibin, include_templates=True):
         return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                            templates=self.templates,
+                            templates=self.templates if include_templates else None,
                             purify_e=hm.purify_e, purify_b=hm.purify_b)
 
     def get_randomized_fields(self, hm, ibin, nsamples=1):
