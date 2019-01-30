@@ -17,6 +17,7 @@ class Observable(object):
         self.config = config
         self.name = config.name
         self.nside = nside
+        self.npix = hp.nside2npix(nside)
 
         self.nproc = nproc
         if nproc > 1:
@@ -117,7 +118,7 @@ class Observable(object):
     def get_field(self, hm, ibin):
         raise NotImplementedError
 
-    def get_randomized_field(self, hm, ibin, *args, **kwargs):
+    def get_randomized_fields(self, hm, ibin, nsamples=1):
         raise NotImplementedError
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
@@ -126,21 +127,32 @@ class Observable(object):
     def plot_auto_cls(self, hm, *args, **kwargs):
         raise NotImplementedError
 
-    # def save_cls(self):
-    #     make_directory(self.config.path_output+'/'+self.name)
-    #     filename = os.path.join(self.config.path_output, self.name, 'cls_{}_{}_nside{}.pickle'.format(self.config.name, self.config.mode, self.nside))
-    #     pickle.dump(self.cls, open(filename, mode='wb'))
-    #
-    # def load_cls(self):
-    #     filename = os.path.join(self.config.path_output, self.name, 'cls_{}_{}_nside{}.pickle'.format(self.config.name, self.config.mode, self.nside))
-    #     try:
-    #         self.cls = pickle.load(open(filename, mode='rb'))
-    #     except FileNotFoundError:
-    #         print("Cls file does not exists: {}".format(filename))
+    def compute_cross_cls_templates(self, hm, nrandom=0):
+        template_fields = {}
+        for key, temp in self.template_dir.items():
+            mask = (temp == hp.UNSEEN) | (temp == 0.0) # kinda dangerous...
+            template_fields[key] = nmt.NmtField(mask, [temp])
 
-    # def compute_pseudo_cls_template(self):
-    #     # self.masks_apo = {}
-    #     for ibin in trange(self.nzbins, desc='{}.compute_pseudo_cls_template'.format(self.obs_name)):
-    #         # self.masks_apo[ibin] = {}
-    #         for map_name in self.map_names:
-    #         alm_g[ibin] = hp.map2alm(gal.density_maps[ibin])
+        fields = {}
+        for ibin in range(self.nzbins):
+            fields[ibin] = self.get_field(hm, ibin)
+
+        cls = {}
+
+        for ibin in trange(self.nzbins):
+            cls[ibin] = {}
+            for key, f_temp in self.template_fields.items():
+                wsp = nmt.NmtWorkspace()
+
+                wsp.compute_coupling_matrix(fields[ibin], f_temp, hm.b)
+
+                cls[ibin]['true'] = compute_master(fields[ibin], f_temp, wsp)
+
+                if nrandom > 0:
+                    fields_r = self.get_randomized_field(hm, ibin, nrandom)
+                    cls[ibin]['random'] = []
+                    for i in range(nrandom):
+                        cls[ibin]['random'].append(compute_master(fields_r[i], f_temp, wsp)
+                    cls[ibin]['random'] = np.array(cls[ibin]['random'])
+
+        return cls

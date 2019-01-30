@@ -76,7 +76,7 @@ class Galaxy(Observable):
                 ipix_r = random_pos(self.masks[ibin].astype(float), Nobj)
                 np.add.at(count, ipix_r, 1.)
 
-                density = ca.cosmo.count2density(count, mskfrac_map=self.masks[ibin], mask=self.masks[ibin])
+                density = ca.cosmo.count2density(count, mskfrac_map=None, mask=self.masks[ibin])
 
                 field_r = nmt.NmtField(mask_apo, [density], templates=None, purify_e=hm.purify_e, purify_b=hm.purify_b)
 

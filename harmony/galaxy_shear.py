@@ -83,14 +83,33 @@ class Shear(Observable):
         if save:
             self.save_maps()
 
+    def compute_ipix(self):
+        if not hasattr(self, 'ipix'):
+            self.ipix = {}
+            for ibin in trange(self.nzbins, desc='Harmony.compute_ipix'):
+                cat = self.cats[ibin]
+                self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+
     def get_field(self, hm, ibin):
         return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
                             templates=self.templates,
                             purify_e=hm.purify_e, purify_b=hm.purify_b)
 
+    def get_randomized_fields(self, hm, ibin, nsamples=1):
+        bool_mask = (self.maps[ibin]['count'] > 0.)
+        fields = []
+        for i in range(nsamples):
+            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'], self.cats[ibin]['e2'], self.ipix[ibin], self.npix, bool_mask)
+            field =  nmt.NmtField(self.masks_apo[ibin], [e1_map, e2_map],
+                                    templates=None,
+                                    purify_e=hm.purify_e, purify_b=hm.purify_b)
+            fields.append(field)
+
+        return fields
+
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
-        npix = hp.nside2npix(self.nside)
+        npix = self.npix
 
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
@@ -108,9 +127,10 @@ class Shear(Observable):
 
         if nrandom > 0:
             Nobj = len(cat)
+            self.compute_ipix()
 
             count = np.zeros(npix, dtype=float)
-            ipix = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+            ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
             np.add.at(count, ipix, 1.)
             bool_mask = (count > 0.)
 
@@ -227,8 +247,7 @@ def apply_random_rotation(e1_in, e2_in):
     e2_out = - e1_in * sin + e2_in * cos
     return e1_out, e2_out
 
-
-def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
+def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask):
     e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
 
     e1_map = np.zeros(npix, dtype=float)
@@ -240,25 +259,41 @@ def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_
     e1_map[bool_mask] /= count[bool_mask]
     e2_map[bool_mask] /= count[bool_mask]
 
+    return e1_map, e2_map
+
+def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
+    # e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
+    #
+    # e1_map = np.zeros(npix, dtype=float)
+    # e2_map = np.zeros(npix, dtype=float)
+    #
+    # np.add.at(e1_map, ipix, e1_rot)
+    # np.add.at(e2_map, ipix, e2_rot)
+    #
+    # e1_map[bool_mask] /= count[bool_mask]
+    # e2_map[bool_mask] /= count[bool_mask]
+
+    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask)
+
     field = nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
     cls = compute_master(field, field, wsp)
 
     return cls
 
-def _multiproc_randrot_maps(cat, ipix, npix, bool_mask, count):
-    e1_rot, e2_rot = apply_random_rotation(cat['e1'], cat['e2'])
-
-    e1_map = np.zeros(npix, dtype=float)
-    e2_map = np.zeros(npix, dtype=float)
-
-    np.add.at(e1_map, ipix, e1_rot)
-    np.add.at(e2_map, ipix, e2_rot)
-
-    e1_map[bool_mask] /= count[bool_mask]
-    e2_map[bool_mask] /= count[bool_mask]
-
-    return e1_map, e2_map
+# def _multiproc_randrot_maps(cat, ipix, npix, bool_mask, count):
+#     e1_rot, e2_rot = apply_random_rotation(cat['e1'], cat['e2'])
+#
+#     e1_map = np.zeros(npix, dtype=float)
+#     e2_map = np.zeros(npix, dtype=float)
+#
+#     np.add.at(e1_map, ipix, e1_rot)
+#     np.add.at(e2_map, ipix, e2_rot)
+#
+#     e1_map[bool_mask] /= count[bool_mask]
+#     e2_map[bool_mask] /= count[bool_mask]
+#
+#     return e1_map, e2_map
 
 
 def _multiproc_randrot_cls(nsamples, args, pos):
