@@ -139,8 +139,11 @@ class Observable(object):
             template_fields[key] = nmt.NmtField(mask, [temp])
 
         fields = {}
+        fields_r = {}
         for ibin in range(self.nzbins):
             fields[ibin] = self.get_field(hm, ibin, include_templates=False)
+            if nrandom > 0:
+                fields_r[ibin] = self.get_randomized_fields(hm, ibin, nrandom)
 
         cls = {}
 
@@ -153,10 +156,9 @@ class Observable(object):
                 cls[(ibin, key)]['true'] = compute_master(fields[ibin], f_temp, wsp)
 
                 if nrandom > 0:
-                    fields_r = self.get_randomized_fields(hm, ibin, nrandom)
                     cls[(ibin, key)]['random'] = []
                     for i in range(nrandom):
-                        cls[(ibin,key)]['random'].append(compute_master(fields_r[i], f_temp, wsp))
+                        cls[(ibin,key)]['random'].append(compute_master(fields_r[ibin][i], f_temp, wsp))
                     cls[(ibin,key)]['random'] = np.array(cls[(ibin, key)]['random'])
 
         return cls
