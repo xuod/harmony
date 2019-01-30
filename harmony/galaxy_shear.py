@@ -107,6 +107,8 @@ class Shear(Observable):
 
         return fields
 
+    def get_randomized_map(self, ibin):
+        raise NotImplementedError
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         npix = self.npix
@@ -298,6 +300,22 @@ def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_
 
 def _multiproc_randrot_cls(nsamples, args, pos):
     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args
+
+    wsp = nmt.NmtWorkspace()
+    b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
+    field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
+    wsp.compute_coupling_matrix(field_0, field_0, b)
+
+    _cls = []
+    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+        _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
+
+    return _cls
+
+
+def _multiproc_randrot_cross_cls(nsamples, args1, args2 pos):
+    cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
+
 
     wsp = nmt.NmtWorkspace()
     b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)

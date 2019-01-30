@@ -88,7 +88,7 @@ class Observable(object):
         self.template_names.sort()
         for filename in tqdm(self.template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
             temp = hp.read_map(os.path.join(templates_dir, filename) ,verbose=False)
-            self.template_dir['%s [%s band]'%(key, band)] = temp
+            self.template_dir[filename] = temp
             self.templates.append(temp)
 
         self.templates = np.array(self.templates)
@@ -121,6 +121,9 @@ class Observable(object):
         raise NotImplementedError
 
     def get_randomized_fields(self, hm, ibin, nsamples=1):
+        raise NotImplementedError
+
+    def get_randomized_map(self, ibin):
         raise NotImplementedError
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
