@@ -54,15 +54,17 @@ class Observable(object):
         maps_dir = os.path.join(self.config.path_maps, self.name)
         make_directory(maps_dir)
         for ibin in trange(self.nzbins, desc='{}.save_maps'.format(self.obs_name)):
+            hp.write_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format('mask', self.config.name, self.mode, self.nside, ibin)), self.masks[ibin], overwrite=True)
             for map_name in self.map_names:
-                hp.write_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}_{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin, 'count')), self.maps[ibin][map_name], overwrite=True)
+                hp.write_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin)), self.maps[ibin][map_name], overwrite=True)
 
     def load_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
         for ibin in trange(self.nzbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
+            self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format('mask', self.config.name, self.mode, self.nside, ibin)), verbose=False)
             for map_name in self.map_names:
-                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}_{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin, 'count')), verbose=False)
+                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin)), verbose=False)
 
     def plot_maps(self):
         make_directory(self.config.path_figures+'/'+self.name)
