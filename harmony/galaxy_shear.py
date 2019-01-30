@@ -284,6 +284,26 @@ def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_
 
     return cls
 
+def _randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, field_t, wsp):
+    # e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
+    #
+    # e1_map = np.zeros(npix, dtype=float)
+    # e2_map = np.zeros(npix, dtype=float)
+    #
+    # np.add.at(e1_map, ipix, e1_rot)
+    # np.add.at(e2_map, ipix, e2_rot)
+    #
+    # e1_map[bool_mask] /= count[bool_mask]
+    # e2_map[bool_mask] /= count[bool_mask]
+
+    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
+
+    field = nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
+
+    cls = compute_master(field, field_t, wsp)
+
+    return cls
+
 # def _multiproc_randrot_maps(cat, ipix, npix, bool_mask, count):
 #     e1_rot, e2_rot = apply_random_rotation(cat['e1'], cat['e2'])
 #
@@ -314,17 +334,26 @@ def _multiproc_randrot_cls(nsamples, args, pos):
     return _cls
 
 
-def _multiproc_randrot_cross_cls(nsamples, args1, args2 pos):
+def _multiproc_randrot_cross_cls(nsamples, args1, args2, pos):
     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
+    temp_list, temp_mask_list = args2
 
-
-    wsp = nmt.NmtWorkspace()
     b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
     field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
-    wsp.compute_coupling_matrix(field_0, field_0, b)
 
-    _cls = []
-    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
-        _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
+    wsp_list  = []
+    field_t_list = []
+    for i in range(len(temp_list)):
+        wsp = nmt.NmtWorkspace()
+        field_t = nmt.NmtField(temp_mask_list[i], [temp_list[i]])
+        wsp.compute_coupling_matrix(field_0, field_t, b)
+        field_t_list.append(field_t)
+        wsp_list.append(wsp)
+
+    _cls = {}
+    for j in trange(len(temp_list)):
+        _cls[j] = []
+        for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+            _cls[j].append(_randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, field_t_list[j], wsp_list[j]))
 
     return _cls
