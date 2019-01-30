@@ -132,7 +132,7 @@ class Observable(object):
     def compute_cross_cls_templates(self, hm, nrandom=0):
         template_fields = {}
         for key, temp in self.template_dir.items():
-            mask = (temp == hp.UNSEEN) | (temp == 0.0) # kinda dangerous...
+            mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
             template_fields[key] = nmt.NmtField(mask, [temp])
 
         fields = {}
@@ -142,19 +142,18 @@ class Observable(object):
         cls = {}
 
         for ibin in trange(self.nzbins):
-            cls[ibin] = {}
             for key, f_temp in template_fields.items():
+                cls[(ibin, key)] = {}
                 wsp = nmt.NmtWorkspace()
-
                 wsp.compute_coupling_matrix(fields[ibin], f_temp, hm.b)
 
-                cls[ibin]['true'] = compute_master(fields[ibin], f_temp, wsp)
+                cls[(ibin, key)]['true'] = compute_master(fields[ibin], f_temp, wsp)
 
                 if nrandom > 0:
-                    fields_r = self.get_randomized_field(hm, ibin, nrandom)
-                    cls[ibin]['random'] = []
+                    fields_r = self.get_randomized_fields(hm, ibin, nrandom)
+                    cls[(ibin, key)]['random'] = []
                     for i in range(nrandom):
-                        cls[ibin]['random'].append(compute_master(fields_r[i], f_temp, wsp))
-                    cls[ibin]['random'] = np.array(cls[ibin]['random'])
+                        cls[(ibin,key)]['random'].append(compute_master(fields_r[i], f_temp, wsp))
+                    cls[(ibin,key)]['random'] = np.array(cls[(ibin, key)]['random'])
 
         return cls

@@ -97,9 +97,10 @@ class Shear(Observable):
 
     def get_randomized_fields(self, hm, ibin, nsamples=1):
         bool_mask = (self.maps[ibin]['count'] > 0.)
+        self.compute_ipix()
         fields = []
-        for i in range(nsamples):
-            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'], self.cats[ibin]['e2'], self.ipix[ibin], self.npix, bool_mask)
+        for i in trange(nsamples):
+            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'], self.cats[ibin]['e2'], self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
             field =  nmt.NmtField(self.masks_apo[ibin], [e1_map, e2_map],
                                     templates=None,
                                     purify_e=hm.purify_e, purify_b=hm.purify_b)
@@ -247,7 +248,7 @@ def apply_random_rotation(e1_in, e2_in):
     e2_out = - e1_in * sin + e2_in * cos
     return e1_out, e2_out
 
-def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask):
+def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
     e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
 
     e1_map = np.zeros(npix, dtype=float)
@@ -273,7 +274,7 @@ def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_
     # e1_map[bool_mask] /= count[bool_mask]
     # e2_map[bool_mask] /= count[bool_mask]
 
-    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask)
+    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
 
     field = nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
