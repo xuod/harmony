@@ -115,7 +115,7 @@ class Observable(object):
         self.templates = np.array(self.templates)
         self.templates = np.expand_dims(self.templates, axis=1)
 
-    def get_field(self, hm, ibin, include_templates=False):
+    def get_field(self, hm, ibin, include_templates=True):
         raise NotImplementedError
 
     def get_randomized_fields(self, hm, ibin, nsamples=1):
@@ -135,7 +135,7 @@ class Observable(object):
 
         fields = {}
         for ibin in range(self.nzbins):
-            fields[ibin] = self.get_field(hm, ibin)
+            fields[ibin] = self.get_field(hm, ibin, include_templates=False)
 
         cls = {}
 

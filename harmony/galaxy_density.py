@@ -50,7 +50,7 @@ class Galaxy(Observable):
         if save:
             self.save_maps()
 
-    def get_field(self, hm, ibin, include_templates=False):
+    def get_field(self, hm, ibin, include_templates=True):
         return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self.templates if include_templates else None, purify_e=hm.purify_e, purify_b=hm.purify_b)
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
