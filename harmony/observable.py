@@ -141,7 +141,7 @@ class Observable(object):
 
         for ibin in trange(self.nzbins):
             cls[ibin] = {}
-            for key, f_temp in self.template_fields.items():
+            for key, f_temp in template_fields.items():
                 wsp = nmt.NmtWorkspace()
 
                 wsp.compute_coupling_matrix(fields[ibin], f_temp, hm.b)
