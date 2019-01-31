@@ -69,8 +69,22 @@ class Harmony(object):
     def compute_auto_cls(self, obs, nrandom=0, save=True):
         self.check_cls_obs(obs, obs)
 
-        for ibin in trange(obs.nzbins, desc='Harmony.compute_cls [obs:{}]'.format(obs.obs_name)):
+        for ibin in trange(obs.nzbins, desc='Harmony.compute_auto_cls [obs:{}]'.format(obs.obs_name)):
             self.cls[(obs.obs_name, obs.obs_name)][ibin] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save)
+
+            if save:
+                self.save_cls()
+
+    def compute_cross_template_cls(self, obs, nrandom, save=True):
+        for tempname in obs.template_dir.keys():
+            key = (obs.obs_name, tempname)
+            if key not in self.cls.keys():
+                self.cls[key] = {}
+            else:
+                print("Replacing cls[%s]".format(str(key)))
+
+        for ibin in trange(obs.nzbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
+            obs._compute_cross_template_cls(self, ibin, nrandom=nrandom)
 
             if save:
                 self.save_cls()

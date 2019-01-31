@@ -94,8 +94,8 @@ class Observable(object):
         self.templates = np.array(self.templates)
         self.templates = np.expand_dims(self.templates, axis=1)
 
-    def load_DES_templates(self, templates_dir):
-        self.bands = ['g', 'r', 'i', 'z']
+    def load_DES_templates(self, templates_dir, bands=['g', 'r', 'i', 'z']):
+        self.bands = bands
         self.syst = {}
         self.syst['Air mass'] = 'AIRMASS.WMEAN_EQU'
         self.syst['Seeing'] = 'FWHM.WMEAN_EQU'
@@ -109,7 +109,7 @@ class Observable(object):
 
         for band in self.bands:
             for key, name in self.syst.items():
-                tempname = 'y3a2_{}_o.4096_t.32768_{}.fits'.format(band, name)
+                tempname = 'y3a2_{}_o.4096_t.32768_{}_nside{}.fits'.format(band, name, self.nside)
                 temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False)
                 self.template_dir['%s [%s band]'%(key, band)] = temp
                 self.templates.append(temp)
@@ -132,33 +132,5 @@ class Observable(object):
     def plot_auto_cls(self, hm, *args, **kwargs):
         raise NotImplementedError
 
-    def compute_cross_cls_templates(self, hm, nrandom=0):
-        template_fields = {}
-        for key, temp in self.template_dir.items():
-            mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
-            template_fields[key] = nmt.NmtField(mask, [temp])
-
-        fields = {}
-        fields_r = {}
-        for ibin in range(self.nzbins):
-            fields[ibin] = self.get_field(hm, ibin, include_templates=False)
-            if nrandom > 0:
-                fields_r[ibin] = self.get_randomized_fields(hm, ibin, nrandom)
-
-        cls = {}
-
-        for ibin in trange(self.nzbins):
-            for key, f_temp in template_fields.items():
-                cls[(ibin, key)] = {}
-                wsp = nmt.NmtWorkspace()
-                wsp.compute_coupling_matrix(fields[ibin], f_temp, hm.b)
-
-                cls[(ibin, key)]['true'] = compute_master(fields[ibin], f_temp, wsp)
-
-                if nrandom > 0:
-                    cls[(ibin, key)]['random'] = []
-                    for i in range(nrandom):
-                        cls[(ibin,key)]['random'].append(compute_master(fields_r[ibin][i], f_temp, wsp))
-                    cls[(ibin,key)]['random'] = np.array(cls[(ibin, key)]['random'])
-
-        return cls
+    def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
+        raise NotImplementedError
