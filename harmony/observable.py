@@ -109,7 +109,7 @@ class Observable(object):
 
         for band in self.bands:
             for key, name in self.syst.items():
-                tempname = 'y3a2_{}_o.4096_t.32768_{}_nside{}.fits'.format(band, name, self.nside)
+                tempname = 'y3a2_{}_o.4096_t.32768_{}._nside{}.fits'.format(band, name, self.nside)
                 temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False)
                 self.template_dir['%s [%s band]'%(key, band)] = temp
                 self.templates.append(temp)
