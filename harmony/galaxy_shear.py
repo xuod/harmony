@@ -269,7 +269,7 @@ class Shear(Observable):
 
             if self.nproc==0:
                 cls_r = []
-                for i in trange(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin):
+                for i in trange(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
                     cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
                 for tempname in self.template_dir.keys():
                     hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
