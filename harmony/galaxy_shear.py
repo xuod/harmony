@@ -293,7 +293,7 @@ class Shear(Observable):
         ell = hm.b.get_effective_ells()
 
         EB = 0 #0 for E, 1 for B
-        ylabels = ['$C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
+        ylabels = ['$\\ell (\\ell+1) C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
         gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
 
         factor = ell*(ell+1)

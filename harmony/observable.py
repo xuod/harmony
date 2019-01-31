@@ -19,10 +19,6 @@ class Observable(object):
         self.nside = nside
         self.npix = hp.nside2npix(nside)
 
-        self.nproc = nproc
-        if nproc > 1:
-            self.pool = multiprocessing.Pool(nproc)
-
         self.map_names = map_names
         self.obs_name = obs_name
         self.mode = mode
