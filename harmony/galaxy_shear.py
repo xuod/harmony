@@ -244,11 +244,13 @@ class Shear(Observable):
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
 
+        logging.info("_compute_cross_template_cls: Making field_0")
         field_0 = self.get_field(hm, ibin, include_templates=False)
 
+        logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
         template_fields = {}
         wsp_dir  = {}
-        for tempname, temp in self.template_dir.items():
+        for tempname, temp in tqdm(self.template_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
             mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
             template_fields[tempname] = nmt.NmtField(mask, [temp])
             wsp_dir[tempname] = nmt.NmtWorkspace()
