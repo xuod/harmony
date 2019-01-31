@@ -38,7 +38,8 @@ class Observable(object):
         if nproc > 1:
             self.pool = multiprocessing.Pool(nproc)
 
-        self.templates = None
+        self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
+        self.template_dir = None
 
     # def load_catalogs(self):
     #     print('Method load_catalogs not implemented, nothing to do.')
@@ -78,19 +79,44 @@ class Observable(object):
             # for map_name in self.map_names:
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=hm.aposize, apotype=hm.apotype)
 
+    def _get_templates_array(self):
+        if self.template_dir is None:
+            return None
+        else:
+            if self.templates == 12345:
+                templates = []
+                for key, temp in self.templates_dir:
+                    templates.append(temp)
+                self.templates = np.expand_dims(np.array(templates), axis=1)
+                return self.templates
+            else:
+                return self.templates
+
+    def _init_templates(self):
+        if self.templates is None:
+            self.template_dir = {}
+            # self.templates = []
 
     def load_all_templates_from_dir(self, templates_dir):
-        self.template_names = os.listdir(templates_dir)
-        self.template_names.sort()
-        for filename in tqdm(self.template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
-            temp = hp.read_map(os.path.join(templates_dir, filename) ,verbose=False)
-            self.template_dir[filename] = temp
-            self.templates.append(temp)
+        self._init_templates()
 
-        self.templates = np.array(self.templates)
-        self.templates = np.expand_dims(self.templates, axis=1)
+        template_names = os.listdir(templates_dir)
+        template_names.sort()
+        for filename in tqdm(template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
+            temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False)
+            self.template_dir[filename] = temp
+            # self.templates.append(temp)
+
+        # self.templates = np.array(self.templates)
+        # self.templates = np.expand_dims(self.templates, axis=1)
+
+    def load_template(self, filename, tempname):
+        self._init_templates()
+        self.template_dir[tempname] =  hp.read_map(filename, verbose=False)
 
     def load_DES_templates(self, templates_dir, bands=['g', 'r', 'i', 'z']):
+        self._init_templates()
+
         self.bands = bands
         self.syst = {}
         self.syst['Air mass'] = 'AIRMASS.WMEAN_EQU'
@@ -100,18 +126,18 @@ class Observable(object):
         self.syst['Effective exposure time (mean)'] = 'T_EFF.WMEAN_EQU'
         self.syst['Effective exposure time (sum)'] = 'T_EFF_EXPTIME.SUM_EQU'
 
-        self.template_dir = {}
-        self.templates = []
+        # self.template_dir = {}
+        # self.templates = []
 
         for band in self.bands:
             for key, name in self.syst.items():
                 tempname = 'y3a2_{}_o.4096_t.32768_{}._nside{}.fits'.format(band, name, self.nside)
                 temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False)
                 self.template_dir['%s [%s band]'%(key, band)] = temp
-                self.templates.append(temp)
+                # self.templates.append(temp)
 
-        self.templates = np.array(self.templates)
-        self.templates = np.expand_dims(self.templates, axis=1)
+        # self.templates = np.array(self.templates)
+        # self.templates = np.expand_dims(self.templates, axis=1)
 
     def get_field(self, hm, ibin, include_templates=True):
         raise NotImplementedError

@@ -92,7 +92,7 @@ class Shear(Observable):
 
     def get_field(self, hm, ibin, include_templates=True):
         return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                            templates=self.templates if include_templates else None,
+                            templates=self._get_templates_array() if include_templates else None,
                             purify_e=hm.purify_e, purify_b=hm.purify_b)
 
     def get_randomized_fields(self, hm, ibin, nsamples=1):
