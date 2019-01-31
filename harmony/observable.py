@@ -93,7 +93,7 @@ class Observable(object):
                 return self.templates
 
     def _init_templates(self):
-        if self.templates is None:
+        if self.templates is 12345:
             self.template_dir = {}
             # self.templates = []
 
@@ -138,6 +138,30 @@ class Observable(object):
 
         # self.templates = np.array(self.templates)
         # self.templates = np.expand_dims(self.templates, axis=1)
+
+    def load_PSF(self, hm, PSF_dir):
+        psf_maps = {}
+
+        keys = ['obs_e1', 'obs_e2', 'piff_e1', 'piff_e2', 'mask']
+        for k in keys:
+            psf_maps[k] = hp.read_map(os.path.join(PSF_dir, 'PSF_%s_nside%i.fits'%(k, self.nside)), verbose=False)
+
+        self.psf_maps = {}
+        self.psf_maps['obs'] = [psf_maps['obs_e1'], -1.0*psf_maps['obs_e2']]
+        self.psf_maps['piff'] = [psf_maps['piff_e1'], -1.0*psf_maps['piff_e2']]
+        self.psf_maps['res'] = [psf_maps['obs_e1']-psf_maps['piff_e1'], -1.0*(psf_maps['obs_e2']-psf_maps['piff_e2'])]
+
+        self.psf_mask_apo = nmt.mask_apodization(psf_maps['mask'], aposize=hm.aposize, apotype=hm.apotype)
+
+        self.psf_fields = {}
+        for k in self.psf_maps.keys():
+            self.psf_fields['obs']  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
+
+        # self.psf_fields['obs']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1'], -1.0*self.psf_maps['obs_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # self.psf_fields['piff'] = nmt.NmtField(psf_mask_apo, [self.psf_maps['piff_e1'], -1.0*self.psf_maps['piff_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # self.psf_fields['res']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1']-self.psf_maps['piff_e1'], -1.0*(self.psf_maps['obs_e1']-self.psf_maps['piff_e2'])], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        #
+        # return psf_maps
 
     def get_field(self, hm, ibin, include_templates=True):
         raise NotImplementedError

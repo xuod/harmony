@@ -335,6 +335,53 @@ class Shear(Observable):
         if showchi2:
             return chi2
 
+    def _compute_cross_PSF_cls(self, hm, ibin, nrandom=0, save=True):
+        npix = self.npix
+        cat = self.cats[ibin]
+        mask_apo = self.masks_apo[ibin]
+
+        logging.info("_compute_cross_PSF_cls: Making field_0")
+        field_0 = self.get_field(hm, ibin, include_templates=False)
+
+        logging.info("_compute_cross_PSF_cls: Making template_fields and wsp_dir")
+        wsp_dir  = {}
+        for key, psf_field in tqdm(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+            wsp_dir[key] = nmt.NmtWorkspace()
+            wsp_dir[key].compute_coupling_matrix(field_0, psf_field, hm.b)
+            hm.cls[(self.obs_name, key)][ibin] = {}
+            hm.cls[(self.obs_name, key)][ibin]['true'] = compute_master(field_0, psf_field, wsp_dir[key])
+            if nrandom > 0:
+                hm.cls[(self.obs_name, key)][ibin]['random'] = []
+
+        if nrandom > 0:
+            Nobj = len(cat)
+            self.compute_ipix()
+
+            count = np.zeros(npix, dtype=float)
+            ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+            np.add.at(count, ipix, 1.)
+            bool_mask = (count > 0.)
+
+            if self.nproc==0:
+                cls_r = []
+                for i in trange(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+                    cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, psf_fields, wsp_dir))
+                for key in self.psf_maps.keys():
+                    hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
+
+            else:
+                args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
+                _multiple_results = [self.pool.apply_async(_multiproc_randrot_cross_PSF_cls, (len(_x), args, self.psf_maps, self.psf_mask_apo, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), self.nproc)) if len(_x)>0]
+                cls_r = []
+                for res in tqdm(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+                    cls_r += res.get()
+
+                for key in self.psf_maps.keys():
+                    hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
+
+                print("\n")
+
+
 def apply_random_rotation(e1_in, e2_in):
     np.random.seed() # CRITICAL in multiple processes !
     rot_angle = np.random.rand(len(e1_in))*2*np.pi #no need for 2?
@@ -408,6 +455,14 @@ def _randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, p
 
     return cls
 
+def _randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, psf_fields, wsp_dir):
+    cls = {}
+    field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
+    for key in psf_fields.keys():
+        cls[key] = compute_master(field, psf_fields[key], wsp_dir[key])
+
+    return cls
+
 # def _multiproc_randrot_maps(cat, ipix, npix, bool_mask, count):
 #     e1_rot, e2_rot = apply_random_rotation(cat['e1'], cat['e2'])
 #
@@ -455,5 +510,24 @@ def _multiproc_randrot_cross_cls(nsamples, args1, template_dir, pos):
     cls = []
     for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
         cls.append(_randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, template_fields, wsp_dir))
+
+    return cls
+
+def _multiproc_randrot_cross_PSF_cls(nsamples, args1, psf_maps, psf_mask_apo, pos):
+    cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
+
+    b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
+    field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
+
+    psf_fields = {}
+    wsp_dir  = {}
+    for key, psf_map in psf_maps.items():
+        psf_fields[key] =  nmt.NmtField(psf_mask_apo, psf_maps[k], purify_e=purify_e, purify_b=purify_b)
+        wsp_dir[key] = nmt.NmtWorkspace()
+        wsp_dir[key].compute_coupling_matrix(field_0, psf_fields[key], b)
+
+    cls = []
+    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+        cls.append(_randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, psf_fields, wsp_dir))
 
     return cls
