@@ -89,6 +89,20 @@ class Harmony(object):
             if save:
                 self.save_cls()
 
+    def compute_cross_PSF_cls(self, obs, nrandom, save=True):
+        for tempname in obs.psf_maps.keys():
+            key = (obs.obs_name, tempname)
+            if key not in self.cls.keys():
+                self.cls[key] = {}
+            else:
+                print("Replacing cls[%s]".format(str(key)))
+
+        for ibin in trange(obs.nzbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
+            obs._compute_cross_PSF_cls(self, ibin, nrandom=nrandom)
+
+            if save:
+                self.save_cls()
+
     def save_cls(self):
         make_directory(self.config.path_output+'/'+self.name)
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))

@@ -365,7 +365,7 @@ class Shear(Observable):
             if self.nproc==0:
                 cls_r = []
                 for i in trange(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
-                    cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, psf_fields, wsp_dir))
+                    cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.psf_fields, wsp_dir))
                 for key in self.psf_maps.keys():
                     hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
 
@@ -380,6 +380,56 @@ class Shear(Observable):
                     hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
 
                 print("\n")
+
+    def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0):
+        ntemp = len(list(self.psf_maps.keys()))
+
+        fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
+        ell = hm.b.get_effective_ells()
+
+        EB = ['E', 'B']
+        ylabel = '$\\ell C_\\ell$' # (\\ell+1)
+        # gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
+        which = np.array([[0,1],[2,3]])
+        title = '$\\gamma_{{\\rm {}}}^{{\\rm gal}} \\ {{\\rm [bin {}]}} \\times \\gamma_{{\\rm {}}}^{{\\rm \\ PSF {}}}$'
+
+        which = np.array([[0,1],[2,3]])[EB_shear,EB_psf]
+
+        factor = ell #*(ell+1)
+
+        showchi2 = True
+
+        chi2 = {}
+        for ibin in range(self.nzbins):
+            for ik, key in enumerate(self.psf_maps.keys()):
+                ax = axes[ik, ibin]
+                ax.axhline(y=0, c='0.8', lw=1)
+                nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
+                for j in range(nrandom):
+                    ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,which,:], c='r', alpha=max(0.01, 1./nrandom))
+                if showchi2:
+                    _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['true'][which,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,which,:])
+                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
+                    chi2[(self.obs_name, key,ibin)] = _chi2
+                else:
+                    label = None
+                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][which,:], label=label)
+                ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
+                ax.set_xlabel('$\\ell$')
+                ax.set_ylabel(ylabel)
+                ax.set_xlim(0)
+                vmax = max(np.abs(ax.get_ylim()))
+                ax.set_ylim(-vmax,+vmax)
+                if showchi2:
+                    ax.legend(loc=1)
+        plt.tight_layout()
+
+        make_directory(self.config.path_figures+'/'+self.name)
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_PSF_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
+        plt.savefig(figfile, dpi=300)
+
+        if showchi2:
+            return chi2
 
 
 def apply_random_rotation(e1_in, e2_in):

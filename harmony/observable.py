@@ -11,6 +11,8 @@ import matplotlib as mpl
 import multiprocessing
 from .utils import *
 import numpy as np
+import logging
+import scipy
 
 class Observable(object):
     def __init__(self, config, nside, mode, nzbins, obs_name, map_names, nproc=0):
@@ -155,7 +157,7 @@ class Observable(object):
 
         self.psf_fields = {}
         for k in self.psf_maps.keys():
-            self.psf_fields['obs']  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
+            self.psf_fields[k]  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
 
         # self.psf_fields['obs']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1'], -1.0*self.psf_maps['obs_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
         # self.psf_fields['piff'] = nmt.NmtField(psf_mask_apo, [self.psf_maps['piff_e1'], -1.0*self.psf_maps['piff_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
@@ -179,4 +181,7 @@ class Observable(object):
         raise NotImplementedError
 
     def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
+        raise NotImplementedError
+
+    def _compute_cross_PSF_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError
