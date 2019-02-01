@@ -572,7 +572,7 @@ def _multiproc_randrot_cross_PSF_cls(nsamples, args1, psf_maps, psf_mask_apo, po
     psf_fields = {}
     wsp_dir  = {}
     for key, psf_map in psf_maps.items():
-        psf_fields[key] =  nmt.NmtField(psf_mask_apo, psf_maps[k], purify_e=purify_e, purify_b=purify_b)
+        psf_fields[key] =  nmt.NmtField(psf_mask_apo, psf_maps[key], purify_e=purify_e, purify_b=purify_b)
         wsp_dir[key] = nmt.NmtWorkspace()
         wsp_dir[key].compute_coupling_matrix(field_0, psf_fields[key], b)
 
