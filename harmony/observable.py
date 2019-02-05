@@ -141,7 +141,7 @@ class Observable(object):
         # self.templates = np.array(self.templates)
         # self.templates = np.expand_dims(self.templates, axis=1)
 
-    def load_PSF(self, hm, PSF_dir):
+    def load_PSF(self, hm, PSF_dir, make_fields=True):
         psf_maps = {}
 
         keys = ['obs_e1', 'obs_e2', 'piff_e1', 'piff_e2', 'mask']
@@ -155,9 +155,10 @@ class Observable(object):
 
         self.psf_mask_apo = nmt.mask_apodization(psf_maps['mask'], aposize=hm.aposize, apotype=hm.apotype)
 
-        self.psf_fields = {}
-        for k in self.psf_maps.keys():
-            self.psf_fields[k]  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        if make_fields:
+            self.psf_fields = {}
+            for k in self.psf_maps.keys():
+                self.psf_fields[k]  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
 
         # self.psf_fields['obs']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1'], -1.0*self.psf_maps['obs_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
         # self.psf_fields['piff'] = nmt.NmtField(psf_mask_apo, [self.psf_maps['piff_e1'], -1.0*self.psf_maps['piff_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
