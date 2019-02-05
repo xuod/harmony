@@ -300,7 +300,6 @@ class Shear(Observable):
 
         factor = ell*(ell+1)
 
-        showchi2 = True
         import scipy
 
         chi2 = {}
@@ -381,7 +380,7 @@ class Shear(Observable):
 
                 print("\n")
 
-    def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0):
+    def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0, sqrtscale=False):
         ntemp = len(list(self.psf_maps.keys()))
 
         fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
@@ -396,8 +395,6 @@ class Shear(Observable):
         which = np.array([[0,1],[2,3]])[EB_shear,EB_psf]
 
         factor = ell #*(ell+1)
-
-        showchi2 = True
 
         chi2 = {}
         for i, ibin in enumerate(self.zbins):
@@ -417,7 +414,10 @@ class Shear(Observable):
                 ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
                 ax.set_xlabel('$\\ell$')
                 ax.set_ylabel(ylabel)
-                ax.set_xlim(0)
+                ax.set_xlim(0, hm.b.lmax)
+                if sqrtscale:
+                    ax.set_xscale('squareroot')
+                    ax.set_xticks([np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))])
                 vmax = max(np.abs(ax.get_ylim()))
                 ax.set_ylim(-vmax,+vmax)
                 if showchi2:
