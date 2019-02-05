@@ -417,7 +417,7 @@ class Shear(Observable):
                 ax.set_xlim(0, hm.b.lmax)
                 if sqrtscale:
                     ax.set_xscale('squareroot')
-                    ax.set_xticks([np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))])
+                    ax.set_xticks(np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))**2)
                 vmax = max(np.abs(ax.get_ylim()))
                 ax.set_ylim(-vmax,+vmax)
                 if showchi2:
