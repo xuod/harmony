@@ -57,9 +57,9 @@ class Harmony(object):
     def compute_all_cls(self, obs1, obs2, save=True):
         self.check_cls_obs(obs1, obs2)
 
-        for i1 in range(obs1.nzbins):
+        for i1 in obs1.zbins:
             field1 = obs1.get_field(self, i1)
-            for i2 in range(obs2.nzbins):
+            for i2 in obs2.zbins:
                 field2 = obs2.get_field(self, i2)
                 self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
 
@@ -69,7 +69,7 @@ class Harmony(object):
     def compute_auto_cls(self, obs, nrandom=0, save=True):
         self.check_cls_obs(obs, obs)
 
-        for ibin in trange(obs.nzbins, desc='Harmony.compute_auto_cls [obs:{}]'.format(obs.obs_name)):
+        for ibin in tqdm(obs.zbins, desc='Harmony.compute_auto_cls [obs:{}]'.format(obs.obs_name)):
             self.cls[(obs.obs_name, obs.obs_name)][ibin] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save)
 
             if save:
@@ -83,7 +83,7 @@ class Harmony(object):
             else:
                 print("Replacing cls[%s]".format(str(key)))
 
-        for ibin in trange(obs.nzbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
+        for ibin in tqdm(obs.zbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
             obs._compute_cross_template_cls(self, ibin, nrandom=nrandom)
 
             if save:
@@ -97,7 +97,7 @@ class Harmony(object):
             else:
                 print("Replacing cls[%s]".format(str(key)))
 
-        for ibin in trange(obs.nzbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
+        for ibin in tqdm(obs.zbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
             obs._compute_cross_PSF_cls(self, ibin, nrandom=nrandom)
 
             if save:

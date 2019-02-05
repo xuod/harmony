@@ -24,12 +24,20 @@ class Observable(object):
         self.map_names = map_names
         self.obs_name = obs_name
         self.mode = mode
-        self.nzbins = nzbins
+        # self.nzbins = nzbins
+
+        if type(nzbins) == int:
+            self.zbins = list(range(nzbins))
+            self.nzbins = nzbins
+        else:
+            self.zbins = nzbins
+            self.nzbins = len(nzbins)
 
         self.maps = {} # to be organized as maps[redshift_bin][map_name]
         self.masks = {} # to be organized as maps[redshift_bin][map_name] # NO !
         self.masks_apo = {} # to be organized as maps[redshift_bin][map_name] # NO !
-        for i in range(nzbins):
+
+        for i in self.zbins:
             self.masks[i] = None
             self.masks_apo[i] = None
             self.maps[i] = {}
@@ -52,14 +60,14 @@ class Observable(object):
     def save_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
         make_directory(maps_dir)
-        for ibin in trange(self.nzbins, desc='{}.save_maps'.format(self.obs_name)):
+        for ibin in tqdm(self.zbins, desc='{}.save_maps'.format(self.obs_name)):
             hp.write_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format('mask', self.config.name, self.mode, self.nside, ibin)), self.masks[ibin], overwrite=True)
             for map_name in self.map_names:
                 hp.write_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format(map_name, self.config.name, self.mode, self.nside, ibin)), self.maps[ibin][map_name], overwrite=True)
 
     def load_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
-        for ibin in trange(self.nzbins, desc='{}.load_maps'.format(self.obs_name)):
+        for ibin in tqdm(self.zbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
             self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_nside{}_bin{}.fits'.format('mask', self.config.name, self.mode, self.nside, ibin)), verbose=False)
             for map_name in self.map_names:
@@ -67,7 +75,7 @@ class Observable(object):
 
     def plot_maps(self):
         make_directory(self.config.path_figures+'/'+self.name)
-        for ibin in trange(self.nzbins, desc='{}.plot_maps'.format(self.obs_name)):
+        for ibin in tqdm(self.zbins, desc='{}.plot_maps'.format(self.obs_name)):
             for map_name in self.map_names:
                 hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin))
                 figfile = os.path.join(self.config.path_figures, self.name, '{}_{}_{}_nside{}_bin{}.png'.format(map_name, self.config.name, self.mode, self.nside, ibin))
@@ -76,7 +84,7 @@ class Observable(object):
 
     def make_masks_apo(self, hm):
         self.masks_apo = {}
-        for ibin in trange(self.nzbins, desc='{}.make_masks_apo'.format(self.obs_name)):
+        for ibin in tqdm(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
             # self.masks_apo[ibin] = {}
             # for map_name in self.map_names:
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=hm.aposize, apotype=hm.apotype)

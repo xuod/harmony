@@ -22,7 +22,7 @@ class Shear(Observable):
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
-        for ibin in trange(self.nzbins):
+        for ibin in tqdm(self.zbins):
             filename = os.path.join(self.data_dir, "Niall_WL_y3_bin_{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -40,7 +40,7 @@ class Shear(Observable):
             self.cats[ibin] = cat
 
     def _init_data(self):
-        for ibin in trange(self.nzbins):
+        for ibin in tqdm(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -54,7 +54,7 @@ class Shear(Observable):
             self.cats[ibin] = cat
 
     def _init_mock(self):
-        for ibin in trange(self.nzbins):
+        for ibin in tqdm(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -69,7 +69,7 @@ class Shear(Observable):
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
-        for ibin in trange(self.nzbins, desc='{}.make_maps'.format(self.obs_name)):
+        for ibin in tqdm(self.zbins, desc='{}.make_maps'.format(self.obs_name)):
             cat = self.cats[ibin]
             quantities, count, mask = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
                                                     quantity=[cat[_x] for _x in keys],
@@ -86,7 +86,7 @@ class Shear(Observable):
     def compute_ipix(self):
         if not hasattr(self, 'ipix'):
             self.ipix = {}
-            for ibin in trange(self.nzbins, desc='{}.compute_ipix'.format(self.obs_name)):
+            for ibin in tqdm(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
                 cat = self.cats[ibin]
                 self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
 
@@ -169,9 +169,9 @@ class Shear(Observable):
             chi2[titles[k]] = {}
             axes[0,k].set_title(titles[k])
             axes[-1,k].set_xlabel('$\ell$')
-            for i in range(self.nzbins):
-                axes[i,0].set_ylabel('$C_\\ell$ (bin %i)'%(i+1))
-                ax = axes[i, k]
+            for iz, i in enumerate(self.zbins):
+                axes[iz,0].set_ylabel('$C_\\ell$ (bin %i)'%(i+1))
+                ax = axes[iz, k]
                 if 'random' in cls[0]:
                     nrandoms = len(cls[i]['random'])
                     for j in range(nrandoms):
@@ -208,8 +208,8 @@ class Shear(Observable):
         k = 2
 
         chi2['BB'] = {}
-        for i in range(self.nzbins):
-            ax = axes[i]
+        for iz, i in enumerate(self.zbins):
+            ax = axes[iz]
             ax.axhline(y=0, c='0.8', lw=1)
             ax.set_xlabel('$\\ell$')
             ax.set_ylabel('$C_\\ell ^{\\rm BB}$')
@@ -304,9 +304,9 @@ class Shear(Observable):
         import scipy
 
         chi2 = {}
-        for ibin in range(self.nzbins):
+        for i, ibin in enumerate(self.zbins):
             for ik, key in enumerate(self.template_dir.keys()):
-                ax = axes[ik, ibin]
+                ax = axes[ik, i]
                 ax.axhline(y=0, c='0.8', lw=1)
                 nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
                 for j in range(nrandom):
@@ -400,9 +400,9 @@ class Shear(Observable):
         showchi2 = True
 
         chi2 = {}
-        for ibin in range(self.nzbins):
+        for i, ibin in enumerate(self.zbins):
             for ik, key in enumerate(self.psf_maps.keys()):
-                ax = axes[ik, ibin]
+                ax = axes[ik, i]
                 ax.axhline(y=0, c='0.8', lw=1)
                 nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
                 for j in range(nrandom):

@@ -17,8 +17,8 @@ class Galaxy(Observable):
             self.init_redmagic(self.nzbins)
 
     def init_redmagic(self, nzbins):
-        self.zbins = [(0.15,0.30), (0.30,0.45), (0.45,0.60), (0.60,0.75), (0.75,0.90)]
-        self.zbins = self.zbins[:nzbins]
+        # self.zbins = [(0.15,0.30), (0.30,0.45), (0.45,0.60), (0.60,0.75), (0.75,0.90)]
+        # self.zbins = self.zbins[:nzbins]
 
         catdir = '/global/cscratch1/sd/troxel/cats_des_y3/'
         basename = 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_'
@@ -28,7 +28,7 @@ class Galaxy(Observable):
 
         which_cat_zbins = [0,0,0,1,2]
 
-        for ibin in trange(len(self.zbins), desc='Galaxy.init_redmagic'):
+        for ibin in tqdm(self.zbins, desc='Galaxy.init_redmagic'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
             self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_binary_nside%i.fits'%(self.nside)), verbose=False)
             comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
@@ -36,7 +36,7 @@ class Galaxy(Observable):
             self.maps[ibin]['completeness'] = comp
 
     def make_maps(self, save=True):
-        for ibin in trange(self.nzbins, desc='Galaxy.make_maps'):
+        for ibin in tqdm(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
             _, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'], None, self.nside,
                                             mask=self.masks[ibin],
@@ -109,8 +109,8 @@ class Galaxy(Observable):
 
         ell = hm.cls['ell']
 
-        for k in range(self.nzbins):
-            ax = axes[k]
+        for ik, k in enumerate(self.nzbins):
+            ax = axes[ik]
 
             ngals = len(self.cats[k])
             fsky = np.sum(self.maps[k]['completeness']) / hp.nside2npix(self.nside)
