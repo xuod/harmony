@@ -316,11 +316,11 @@ class Shear(Observable):
                     chi2[(self.obs_name, key,ibin)] = _chi2
                 else:
                     label = None
-                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][EB,:], label=label)
+                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][EB,:], label=label, c='b')
                 ax.set_title(gamma_label[EB] + ' [bin %i] $\\times$ '%(ibin+1) + key, fontsize=8)
                 ax.set_xlabel('$\\ell$')
                 ax.set_ylabel(ylabels[EB])
-                ax.set_xlim(0)
+                ax.set_xlim(0, hm.b.lmax)
                 vmax = max(np.abs(ax.get_ylim()))
                 ax.set_ylim(-vmax,+vmax)
                 if showchi2:
@@ -410,7 +410,7 @@ class Shear(Observable):
                     chi2[(self.obs_name, key,ibin)] = _chi2
                 else:
                     label = None
-                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][which,:], label=label)
+                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][which,:], label=label, c='b')
                 ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
                 ax.set_xlabel('$\\ell$')
                 ax.set_ylabel(ylabel)
