@@ -294,7 +294,7 @@ class Shear(Observable):
         fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
         ell = hm.b.get_effective_ells()
 
-        EB = 0 #0 for E, 1 for B
+        # EB = 0 #0 for E, 1 for B
         ylabels = ['$\\ell (\\ell+1) C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
         gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
 
