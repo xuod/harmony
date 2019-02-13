@@ -222,7 +222,7 @@ class Shear(Observable):
         for i in range(1):
             for j, zbin in enumerate(self.zbins):
                 k = (i,j)
-                titles[k] = _titles[k]
+                titles[k] = 'BB spectrum [bin %i]'%(zbin+1)
                 ylabels[k] = '$C_\\ell ^{\\rm BB}$'
                 cls[k] = {}
                 cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3]
