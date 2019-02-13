@@ -166,13 +166,13 @@ class Shear(Observable):
         for i, zbin in enumerate(self.zbins):
             for j in range(3):
                 k = (i,j)
-                titles[k] = _titles[k] + ' [bin %i]'%(i+1)
+                titles[k] = _titles[j] + ' [bin %i]'%(i+1)
                 ylabels[k] = '$C_\\ell$'
                 cls[k] = {}
-                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][idx_EB[k]]
-                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:][idx_EB[k]]
+                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][idx_EB[j]]
+                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,idx_EB[j],:]
 
-        return self.plot_cls(cls, hm, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, showy0=False, chi2method=None)
+        return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, showy0=True, chi2method=chi2method)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
@@ -226,9 +226,9 @@ class Shear(Observable):
                 ylabels[k] = '$C_\\ell ^{\\rm BB}$'
                 cls[k] = {}
                 cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3]
-                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:][3]
+                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,3,:]
 
-        return self.plot_cls(cls, hm, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, showy0=True, chi2method=None)
+        return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, showy0=True, chi2method=chi2method)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
