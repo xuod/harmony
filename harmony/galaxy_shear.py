@@ -172,7 +172,7 @@ class Shear(Observable):
                 cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][idx_EB[k]]
                 cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:][idx_EB[k]]
 
-        return self.plot_cls(cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, showy0=False, chi2method=None)
+        return self.plot_cls(cls, hm, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, showy0=False, chi2method=None)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
@@ -228,7 +228,7 @@ class Shear(Observable):
                 cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3]
                 cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:][3]
 
-        return self.plot_cls(cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, showy0=True, chi2method=None)
+        return self.plot_cls(cls, hm, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, showy0=True, chi2method=None)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
