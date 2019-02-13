@@ -187,8 +187,6 @@ class Observable(object):
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError
 
-    def compute_chi2(self, )
-
     def plot_cls(self, cls, nrows, ncols, figname='', titles=None, ylabels=None, showy0=False, symy0=False, chi2method=None):
         fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, 3*nrows))
 
