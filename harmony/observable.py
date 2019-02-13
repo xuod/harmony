@@ -187,8 +187,47 @@ class Observable(object):
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError
 
-    def plot_auto_cls(self, hm, *args, **kwargs):
-        raise NotImplementedError
+    def compute_chi2(self, )
+
+    def plot_cls(self, cls, nrows, ncols, figname='', titles=None, ylabels=None, showy0=False, symy0=False, chi2method=None):
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, 3*nrows))
+
+        ell = hm.b.get_effective_ells()
+
+        chi2 = {}
+        for i in range(nrows):
+            for j in range(ncols):
+                ax = axes[i,j]
+                if showy0:
+                    ax.axhline(y=0, c='0.8', lw=1)
+                y = cls[(i,j)]
+                nrandom = y['random'].shape[0]
+                for j in range(nrandom):
+                    ax.plot(ell, y['random'][j], c='r', alpha=max(0.01, 1./nrandom))
+                if chi2method is not None:
+                    _chi2 = get_chi2(y['true'], y['random'], smooth=(chi2method=='smooth'))
+                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
+                    chi2[(self.obs_name, key,ibin)] = _chi2
+                else:
+                    label = None
+                ax.plot(ell, y['true'], label=labels[(i,j)], c='b')
+                ax.set_title(titles[(i,j)], fontsize=8)
+                ax.set_xlabel('$\\ell$')
+                ax.set_ylabel(ylabels[(i,j)])
+                if symy0:
+                    ax.set_xlim(0, hm.b.lmax)
+                    vmax = max(np.abs(ax.get_ylim()))
+                    ax.set_ylim(-vmax,+vmax)
+                if chi2method is not None:
+                    ax.legend(loc=1)
+        plt.tight_layout()
+
+        make_directory(self.config.path_figures+'/'+self.name)
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_{}_{}_{}_{}_nside{}.png'.format(figname, self.obs_name, self.config.name, self.mode, self.nside))
+        plt.savefig(figfile, dpi=300)
+
+        if showchi2:
+            return chi2
 
     def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError

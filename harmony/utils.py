@@ -20,9 +20,13 @@ def compute_master(f_a, f_b, wsp, clb=None) :
     return cl_decoupled
 
 
-def get_chi2_smoothcov(obs, randoms):
-    model = GraphicalLassoCV(cv=5)
-    model.fit(randoms)
+def get_chi2(obs, randoms, smooth=False):
+    if smooth:
+        model = GraphicalLassoCV(cv=5)
+        model.fit(randoms)
+        cov = model.covariance_
+    else:
+        cov = np.cov(randoms, rowvar=False)
 
     def calc_chi2(x, cov, xmean=None):
         if xmean is not None :
@@ -32,4 +36,4 @@ def get_chi2_smoothcov(obs, randoms):
         icov = np.linalg.inv(cov)
         return np.dot(y.T, np.dot(icov, y))
 
-    return calc_chi2(obs, model.covariance_, np.mean(randoms, axis=0))
+    return calc_chi2(obs, cov, np.mean(randoms, axis=0))

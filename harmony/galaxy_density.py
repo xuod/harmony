@@ -59,7 +59,7 @@ class Galaxy(Observable):
         mask_apo = self.masks_apo[ibin]
 
         wsp = nmt.NmtWorkspace()
-        field_0 = get_field(self, hm, ibin) #nmt.NmtField(mask_apo, [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
+        field_0 = self.get_field(hm, ibin) #nmt.NmtField(mask_apo, [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
 
         wsp.compute_coupling_matrix(field_0, field_0, hm.b)
 
