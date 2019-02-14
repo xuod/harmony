@@ -20,7 +20,7 @@ def compute_master(f_a, f_b, wsp, clb=None) :
     return cl_decoupled
 
 
-def get_chi2(obs, randoms, smooth=False):
+def get_chi2(obs, randoms, smooth=False, return_pval=False):
     if smooth:
         model = GraphicalLassoCV(cv=5)
         model.fit(randoms)
@@ -36,4 +36,9 @@ def get_chi2(obs, randoms, smooth=False):
         icov = np.linalg.inv(cov)
         return np.dot(y.T, np.dot(icov, y))
 
-    return calc_chi2(obs, cov, np.mean(randoms, axis=0))
+    chi2 = calc_chi2(obs, cov, np.mean(randoms, axis=0))
+    if return_pval:
+        pval = scipy.stats.chi2.sf(chi2, df=obs.shape[0])
+        return chi2, pval
+    else:
+        return chi2

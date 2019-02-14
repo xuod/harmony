@@ -204,8 +204,8 @@ class Observable(object):
                 for r in range(nrandom):
                     ax.plot(ell, y['random'][r], c='r', alpha=max(0.01, 1./nrandom))
                 if chi2method is not None:
-                    _chi2 = get_chi2(y['true'], y['random'], smooth=(chi2method=='smooth'))
-                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.2g}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
+                    _chi2, _pval = get_chi2(y['true'], y['random'], smooth=(chi2method=='smooth'), return_pval=True)
+                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.2g}$)'.format(len(ell), _chi2, _pval)
                     chi2[(i,j)] = _chi2
                 else:
                     label = None
