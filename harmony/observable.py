@@ -3,8 +3,6 @@ import pymaster as nmt
 from tqdm.auto import tqdm, trange
 from astropy.io import fits
 import os, sys
-# sys.path.insert(0, os.path.join(os.environ['HOME'],'codes/castor'))
-# sys.path.insert(0, os.path.join(os.environ['HOME'],'Cosmo/codes/castor'))
 import castor as ca
 import matplotlib.pyplot as plt
 import matplotlib as mpl
