@@ -154,7 +154,7 @@ class Shear(Observable):
 
         return cls
 
-    def plot_auto_cls(self, hm, chi2method=None):
+    def plot_auto_cls(self, hm, **kwargs):
         cls = {}
         titles = {}
         ylabels = {}
@@ -172,7 +172,7 @@ class Shear(Observable):
                 cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][idx_EB[j]]
                 cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,idx_EB[j],:]
 
-        return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, showy0=True, chi2method=chi2method)
+        return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
@@ -214,7 +214,7 @@ class Shear(Observable):
         # if showchi2:
         #     return chi2
 
-    def plot_cls_BB_only(self, hm, chi2method=False):
+    def plot_cls_BB_only(self, hm, remove_Nl=False, **kwargs):
         cls = {}
         titles = {}
         ylabels = {}
@@ -223,12 +223,22 @@ class Shear(Observable):
             for j, zbin in enumerate(self.zbins):
                 k = (i,j)
                 titles[k] = 'BB spectrum [bin %i]'%(zbin+1)
-                ylabels[k] = '$C_\\ell ^{\\rm BB}$'
+                if 'factor_ell' in kwargs.keys():
+                    if kwargs['factor_ell'] == 1:
+                        ylabels[k] = '$\\ell C_\\ell ^{\\rm BB}$'
+                    if kwargs['factor_ell'] == 2:
+                        ylabels[k] = '$\\ell (\\ell+1) C_\\ell ^{\\rm BB}$'
+                else:
+                    ylabels[k] = '$C_\\ell ^{\\rm BB}$'
                 cls[k] = {}
-                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3]
-                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,3,:]
+                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3])
+                cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,3,:])
+                if remove_Nl:
+                    clr_r_m = np.mean(cls[k]['random'], axis=0)
+                    cls[k]['true'] -= clr_r_m
+                    cls[k]['random'] -= clr_r_m
 
-        return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, showy0=True, chi2method=chi2method)
+        return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, **kwargs)
 
         # cls = hm.cls[(self.obs_name, self.obs_name)]
         # ell = hm.cls['ell']
@@ -283,7 +293,7 @@ class Shear(Observable):
         logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
         template_fields = {}
         wsp_dir  = {}
-        for tempname, temp in tqdm(self.template_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
+        for tempname, temp in tqdm(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
             mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
             template_fields[tempname] = nmt.NmtField(mask, [temp])
             wsp_dir[tempname] = nmt.NmtWorkspace()
@@ -306,23 +316,23 @@ class Shear(Observable):
                 cls_r = []
                 for i in trange(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
                     cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
-                for tempname in self.template_dir.keys():
+                for tempname in self.templates_dir.keys():
                     hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
 
             else:
                 args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
-                _multiple_results = [self.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.template_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), self.nproc)) if len(_x)>0]
+                _multiple_results = [self.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.templates_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), self.nproc)) if len(_x)>0]
                 cls_r = []
                 for res in tqdm(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
                     cls_r += res.get()
 
-                for tempname in self.template_dir.keys():
+                for tempname in self.templates_dir.keys():
                     hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
 
                 print("\n")
 
     def plot_cross_template_cls(self, hm, showchi2=False, EB=0):
-        ntemp = len(list(self.template_dir.keys()))
+        ntemp = len(list(self.templates_dir.keys()))
 
         fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
         ell = hm.b.get_effective_ells()
@@ -337,7 +347,7 @@ class Shear(Observable):
 
         chi2 = {}
         for i, ibin in enumerate(self.zbins):
-            for ik, key in enumerate(self.template_dir.keys()):
+            for ik, key in enumerate(self.templates_dir.keys()):
                 ax = axes[ik, i]
                 ax.axhline(y=0, c='0.8', lw=1)
                 nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
@@ -576,7 +586,7 @@ def _multiproc_randrot_cls(nsamples, args, pos):
     return _cls
 
 
-def _multiproc_randrot_cross_cls(nsamples, args1, template_dir, pos):
+def _multiproc_randrot_cross_cls(nsamples, args1, templates_dir, pos):
     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
 
     b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
@@ -584,7 +594,7 @@ def _multiproc_randrot_cross_cls(nsamples, args1, template_dir, pos):
 
     template_fields = {}
     wsp_dir  = {}
-    for key, temp in template_dir.items():
+    for key, temp in templates_dir.items():
         mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
         template_fields[key] = nmt.NmtField(mask, [temp])
         wsp_dir[key] = nmt.NmtWorkspace()

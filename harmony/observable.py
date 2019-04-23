@@ -46,8 +46,9 @@ class Observable(object):
         if nproc > 1:
             self.pool = multiprocessing.Pool(nproc)
 
-        self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
-        self.template_dir = None
+        self.has_templates = False
+        # self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
+        # self.templates_dir = None
 
     # def load_catalogs(self):
     #     print('Method load_catalogs not implemented, nothing to do.')
@@ -88,21 +89,18 @@ class Observable(object):
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=hm.aposize, apotype=hm.apotype)
 
     def _get_templates_array(self):
-        if self.template_dir is None:
+        if not self.has_templates:
             return None
         else:
-            if self.templates == 12345:
-                templates = []
-                for key, temp in self.templates_dir:
-                    templates.append(temp)
-                self.templates = np.expand_dims(np.array(templates), axis=1)
-                return self.templates
-            else:
-                return self.templates
+            templates = []
+            for key, temp in self.templates_dir.items():
+                templates.append(temp)
+            templates = np.expand_dims(np.array(templates), axis=1)
+            return templates
 
     def _init_templates(self):
-        if self.templates is 12345:
-            self.template_dir = {}
+        self.has_templates = True
+        self.templates_dir = {}
             # self.templates = []
 
     def load_all_templates_from_dir(self, templates_dir):
@@ -111,8 +109,11 @@ class Observable(object):
         template_names = os.listdir(templates_dir)
         template_names.sort()
         for filename in tqdm(template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
-            temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False)
-            self.template_dir[filename] = temp
+            # try:
+                temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False)
+                self.templates_dir[filename] = temp
+            # except:
+            #     print("Could not read {}".format(os.path.join(templates_dir, filename)))
             # self.templates.append(temp)
 
         # self.templates = np.array(self.templates)
@@ -120,7 +121,7 @@ class Observable(object):
 
     def load_template(self, filename, tempname):
         self._init_templates()
-        self.template_dir[tempname] =  hp.read_map(filename, verbose=False)
+        self.templates_dir[tempname] =  hp.read_map(filename, verbose=False)
 
     def load_DES_templates(self, templates_dir, bands=['g', 'r', 'i', 'z']):
         self._init_templates()
@@ -134,14 +135,14 @@ class Observable(object):
         self.syst['Effective exposure time (mean)'] = 'T_EFF.WMEAN_EQU'
         self.syst['Effective exposure time (sum)'] = 'T_EFF_EXPTIME.SUM_EQU'
 
-        # self.template_dir = {}
+        # self.templates_dir = {}
         # self.templates = []
 
         for band in self.bands:
             for key, name in self.syst.items():
                 tempname = 'y3a2_{}_o.4096_t.32768_{}._nside{}.fits'.format(band, name, self.nside)
                 temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False)
-                self.template_dir['%s [%s band]'%(key, band)] = temp
+                self.templates_dir['%s [%s band]'%(key, band)] = temp
                 # self.templates.append(temp)
 
         # self.templates = np.array(self.templates)
@@ -185,12 +186,24 @@ class Observable(object):
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError
 
-    def plot_cls(self, hm, cls, nrows, ncols, figname='', titles=None, ylabels=None, showy0=False, symy0=False, chi2method=None):
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, 3*nrows))
-        axes = axes.reshape((nrows,ncols))
+    def plot_cls(self, hm, cls, nrows, ncols, figname='', titles=None, ylabels=None,
+                    showy0=False, symy0=False, chi2method=None, blindyaxis=False, fig=None, return_fig=False,
+                    factor_ell=0, c=None, ls=None, pdf=False, xlim=None, ylim=None):
+        if fig is None:
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, 3*nrows))
+        else:
+            axes = np.array(fig.axes)
+        axes = np.array(axes).reshape((nrows,ncols))
 
         ell = hm.b.get_effective_ells()
 
+        if factor_ell == 1:
+            factor = ell
+        elif factor_ell == 2:
+            factor = ell*(ell+1.)
+        else:
+            factor = 1.
+        
         chi2 = {}
         for i in range(nrows):
             for j in range(ncols):
@@ -198,35 +211,52 @@ class Observable(object):
                 if showy0:
                     ax.axhline(y=0, c='0.8', lw=1)
                 y = cls[(i,j)]
-                nrandom = y['random'].shape[0]
-                for r in range(nrandom):
-                    ax.plot(ell, y['random'][r], c='r', alpha=max(0.01, 1./nrandom))
+                if 'random' in y.keys():
+                    nrandom = y['random'].shape[0]
+                    for r in range(nrandom):
+                        ax.plot(ell, factor*y['random'][r], c='r', alpha=max(0.01, 1./nrandom))
                 if chi2method is not None:
                     _chi2, _pval = get_chi2(y['true'], y['random'], smooth=(chi2method=='smooth'), return_pval=True)
                     label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.2g}$)'.format(len(ell), _chi2, _pval)
                     chi2[(i,j)] = _chi2
                 else:
                     label = None
-                ax.plot(ell, y['true'], label=label, c='b')
+                ax.plot(ell, factor*y['true'], label=label, c='b' if c is None else c, ls='-' if ls is None else ls)
                 if titles is not None:
                     ax.set_title(titles[(i,j)], fontsize=8)
                 ax.set_xlabel('$\\ell$')
-                ax.set_xlim(0, hm.b.lmax)
+                if xlim is not None:
+                    ax.set_xlim(xlim)
+                else:
+                    ax.set_xlim(0, hm.b.lmax)
+
+                if ylim is not None:
+                    ax.set_ylim(ylim)
+
                 if ylabels is not None:
                     ax.set_ylabel(ylabels[(i,j)])
+
                 if symy0:
                     vmax = max(np.abs(ax.get_ylim()))
                     ax.set_ylim(-vmax,+vmax)
+
                 if chi2method is not None:
                     ax.legend(loc=1)
+
+                if blindyaxis:
+                    ax.set_yticks([])
         plt.tight_layout()
 
         make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'cls_{}_{}_{}_{}_nside{}.png'.format(figname, self.obs_name, self.config.name, self.mode, self.nside))
+        figfile = os.path.join(self.config.path_figures, self.name, 'cls_{}_{}_{}_{}_nside{}.{}'.format(figname, self.obs_name, self.config.name, self.mode, self.nside, 'pdf' if pdf else 'png'))
         plt.savefig(figfile, dpi=300)
 
+        out = []
+        if return_fig:
+            out.append(fig)
         if chi2method is not None:
-            return chi2
+            out.append(chi2)
+        return tuple(out)
 
     def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
         raise NotImplementedError

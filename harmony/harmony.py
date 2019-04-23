@@ -12,7 +12,7 @@ import pickle
 import numpy as np
 
 class Harmony(object):
-    def __init__(self, config, nside, aposize=2.0, apotype='C1', purify_e=False, purify_b=False, nlb=32, lmax=None, nproc=0):
+    def __init__(self, config, nside, aposize=2.0, apotype='C1', purify_e=False, purify_b=False, nlb=32, lmax=None, b=None, nproc=0):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -22,9 +22,14 @@ class Harmony(object):
         self.purify_e = purify_e
         self.purify_b = purify_b
 
-        self.lmax = lmax
-        self.nlb = nlb
-        self.b = nmt.NmtBin(self.nside, nlb=nlb, lmax=lmax)
+        if b is None:
+            self.lmax = lmax
+            self.nlb = nlb
+            self.b = nmt.NmtBin(self.nside, nlb=nlb, lmax=lmax)
+        else:
+            self.b = b
+            self.lmax = b.lmax
+            # self.nlb = b.nlb
         self.ell = self.b.get_effective_ells()
 
         self.cls = {}
