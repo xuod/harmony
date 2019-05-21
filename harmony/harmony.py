@@ -68,7 +68,9 @@ class Harmony(object):
             field1 = obs1.get_field(self, i1)
             for i2 in obs2.zbins:
                 if (i2,i1) in self.cls[(obs1.obs_name, obs2.obs_name)].keys() and same_obs:
-                        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
+                        # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
+                        # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
+                        continue
                 else:
                     field2 = obs2.get_field(self, i2)
                     self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
