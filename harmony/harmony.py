@@ -57,14 +57,21 @@ class Harmony(object):
         if save:
             self.save_cls()
 
-    def compute_all_cls(self, obs1, obs2, save=True):
+    def compute_all_cls(self, obs1, obs2=None, save=True):
+        if obs2 is None:
+            same_obs = True
+            obs2 = obs1
+
         self.check_cls_obs(obs1, obs2)
 
-        for i1 in obs1.zbins:
+        for i1 in tqdm(obs1.zbins, desc='Harmony.compute_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             field1 = obs1.get_field(self, i1)
             for i2 in obs2.zbins:
-                field2 = obs2.get_field(self, i2)
-                self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
+                if (i2,i1) in self.cls[(obs1.obs_name, obs2.obs_name)].keys() and same_obs:
+                        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
+                else:
+                    field2 = obs2.get_field(self, i2)
+                    self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
 
         if save:
             self.save_cls()
@@ -73,7 +80,7 @@ class Harmony(object):
         self.check_cls_obs(obs, obs)
 
         for ibin in tqdm(obs.zbins, desc='Harmony.compute_auto_cls [obs:{}]'.format(obs.obs_name)):
-            self.cls[(obs.obs_name, obs.obs_name)][ibin] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save)
+            self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save)
 
             if save:
                 self.save_cls()
