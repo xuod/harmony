@@ -169,8 +169,8 @@ class Shear(Observable):
                 titles[k] = _titles[j] + ' [bin %i]'%(i+1)
                 ylabels[k] = '$C_\\ell$'
                 cls[k] = {}
-                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][idx_EB[j]]
-                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,idx_EB[j],:]
+                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][(zbin,zbin)]['true'][idx_EB[j]]
+                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][(zbin,zbin)]['random'][:,idx_EB[j],:]
 
         return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels)
 
@@ -231,8 +231,8 @@ class Shear(Observable):
                 else:
                     ylabels[k] = '$C_\\ell ^{\\rm BB}$'
                 cls[k] = {}
-                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][3])
-                cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,3,:])
+                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['true'][3])
+                cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['random'][:,3,:])
                 if remove_Nl:
                     clr_r_m = np.mean(cls[k]['random'], axis=0)
                     cls[k]['true'] -= clr_r_m
