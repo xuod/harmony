@@ -154,6 +154,49 @@ class Shear(Observable):
 
         return cls
 
+
+    def _compute_auto_cls_update(self, hm, ibin, nrandom=0, save=True):
+        npix = self.npix
+
+        cat = self.cats[ibin]
+        mask_apo = self.masks_apo[ibin]
+
+        wsp = nmt.NmtWorkspace()
+        field_0 = self.get_field(hm, ibin)
+
+        wsp.compute_coupling_matrix(field_0, field_0, hm.b)
+        if nrandom > 0 and self.nproc != 0:
+            wsp_filename = hm.save_workspace(wsp, '{}_{}_{}_{}'.format(self.obs_name, self.obs_name, ibin, ibin), return_filename=True)
+
+        cls = {}
+        cls['true'] = compute_master(field_0, field_0, wsp)
+
+        if nrandom > 0:
+            Nobj = len(cat)
+            self.compute_ipix()
+
+            count = np.zeros(npix, dtype=float)
+            ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+            np.add.at(count, ipix, 1.)
+            bool_mask = (count > 0.)
+
+            _cls = []
+
+            if self.nproc==0:
+                for i in trange(nrandom, desc='{}.compute_auto_cls [bin {}]'.format(self.obs_name, ibin)):
+                    _cls.append(_randrot_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
+
+            else:
+                args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
+                _multiple_results = [self.pool.apply_async(_multiproc_randrot_cls, (len(_x), args, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), self.nproc)) if len(_x)>0]
+                for res in tqdm(_multiple_results, desc='{}.compute_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+                    _cls += res.get()
+                print("\n")
+
+            cls['random'] = np.array(_cls)
+
+        return cls
+
     def plot_auto_cls(self, hm, **kwargs):
         cls = {}
         titles = {}
@@ -174,45 +217,6 @@ class Shear(Observable):
 
         return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels)
 
-        # cls = hm.cls[(self.obs_name, self.obs_name)]
-        # ell = hm.cls['ell']
-
-        # fig, axes = plt.subplots(self.nzbins, 3, figsize=(12, self.nzbins*3))
-        # axes = axes.reshape((self.nzbins, 3))
-        # titles = ['EE', 'EB', 'BB']
-
-        # chi2 = {}
-
-        # for k in range(3):
-        #     chi2[titles[k]] = {}
-        #     axes[0,k].set_title(titles[k])
-        #     axes[-1,k].set_xlabel('$\ell$')
-        #     for iz, i in enumerate(self.zbins):
-        #         axes[iz,0].set_ylabel('$C_\\ell$ (bin %i)'%(i+1))
-        #         ax = axes[iz, k]
-        #         if 'random' in cls[0]:
-        #             nrandoms = len(cls[i]['random'])
-        #             for j in range(nrandoms):
-        #                 ax.plot(ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=max(0.01,1./nrandoms))
-        #             ax.plot(ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
-        #         if showchi2:
-        #             _chi2 = get_chi2_smoothcov(cls[i]['true'][idx_EB[k]], cls[i]['random'][:,idx_EB[k],:])
-        #             label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-        #             chi2[titles[k]][i] = _chi2
-        #         else:
-        #             label=None
-        #         ax.plot(ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
-        #         if showchi2:
-        #             ax.legend()
-
-        # plt.tight_layout()
-
-        # make_directory(self.config.path_figures+'/'+self.name)
-        # figfile = os.path.join(self.config.path_figures, self.name, 'cls_auto_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-        # plt.savefig(figfile, dpi=300)
-
-        # if showchi2:
-        #     return chi2
 
     def plot_cls_BB_only(self, hm, remove_Nl=False, **kwargs):
         cls = {}
@@ -240,47 +244,6 @@ class Shear(Observable):
 
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, **kwargs)
 
-        # cls = hm.cls[(self.obs_name, self.obs_name)]
-        # ell = hm.cls['ell']
-
-        # fig, axes = plt.subplots(1, self.nzbins, figsize=(self.nzbins*4, 3))
-        # idx_EB = [0, 1, 3]
-        # titles = ['EE', 'EB', 'BB']
-
-        # chi2 = {}
-        # k = 2
-
-        # chi2['BB'] = {}
-        # for iz, i in enumerate(self.zbins):
-        #     ax = axes[iz]
-        #     ax.axhline(y=0, c='0.8', lw=1)
-        #     ax.set_xlabel('$\\ell$')
-        #     ax.set_ylabel('$C_\\ell ^{\\rm BB}$')
-        #     ax.set_title('BB spectrum [bin %i]'%(i+1))
-        #     if 'random' in cls[0]:
-        #         nrandoms = len(cls[i]['random'])
-        #         for j in range(nrandoms):
-        #             ax.plot(ell, cls[i]['random'][j][idx_EB[k]], c='r', alpha=max(0.01,1./nrandoms))
-        #         ax.plot(ell, np.mean(cls[i]['random'][:,idx_EB[k],:], axis=0), c='r', ls='--')
-        #     if showchi2:
-        #         _chi2 = get_chi2_smoothcov(cls[i]['true'][idx_EB[k]], cls[i]['random'][:,idx_EB[k],:])
-        #         label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-        #         chi2[titles[k]][i] = _chi2
-        #     else:
-        #         label=None
-        #     ax.plot(ell, cls[i]['true'][idx_EB[k]], c='b', label=label)
-        #     ax.set_xlim(0, hm.b.lmax)
-        #     if showchi2:
-        #         ax.legend()
-
-        # plt.tight_layout()
-
-        # make_directory(self.config.path_figures+'/'+self.name)
-        # figfile = os.path.join(self.config.path_figures, self.name, 'cls_BBonly_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-        # plt.savefig(figfile, dpi=300)
-
-        # if showchi2:
-        #     return chi2
 
     def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
         npix = self.npix
@@ -572,12 +535,13 @@ def _randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, coun
 
 
 def _multiproc_randrot_cls(nsamples, args, pos):
-    cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args
+    cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp_filename = args
 
     wsp = nmt.NmtWorkspace()
-    b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
-    field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
-    wsp.compute_coupling_matrix(field_0, field_0, b)
+    # b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
+    # field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
+    # wsp.compute_coupling_matrix(field_0, field_0, b)
+    wsp.read_from(wsp_filename)
 
     _cls = []
     for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):

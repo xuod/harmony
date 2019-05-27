@@ -126,3 +126,14 @@ class Harmony(object):
             self.cls = pickle.load(open(filename, mode='rb'))
         except FileNotFoundError:
             print("Cls file does not exists: {}".format(filename))
+
+    def save_workspace(self, wsp, suffix, return_filename=False):
+        make_directory(self.config.path_output+'/'+self.name)
+        filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.pickle'.format(self.config.name, self.nside, suffix))
+        wsp.write_to(filename)
+        if return_filename:
+            return filename
+
+    def load_workspace(self, wsp, suffix):
+        filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.pickle'.format(self.config.name, self.nside, suffix))
+        wsp.read_from(filename)
