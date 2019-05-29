@@ -78,11 +78,11 @@ class Harmony(object):
         if save:
             self.save_cls()
 
-    def compute_auto_cls(self, obs, nrandom=0, save=True):
+    def compute_auto_cls(self, obs, nrandom=0, save=True, save_workspace=True):
         self.check_cls_obs(obs, obs)
 
         for ibin in tqdm(obs.zbins, desc='Harmony.compute_auto_cls [obs:{}]'.format(obs.obs_name)):
-            self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save)
+            self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save, save_workspace=save_workspace)
 
             if save:
                 self.save_cls()
@@ -134,6 +134,20 @@ class Harmony(object):
         if return_filename:
             return filename
 
-    def load_workspace(self, wsp, suffix):
+    def load_workspace(self, wsp, suffix, return_filename=False):
         filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.pickle'.format(self.config.name, self.nside, suffix))
-        wsp.read_from(filename)
+        try:
+            wsp.read_from(filename)
+        except FileNotFoundError:
+            print("Workspace file does not exists: {}".format(filename))
+
+    def load_workspace_if_exists(self, wsp, suffix, return_filename=False, verbose=False):
+        filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.pickle'.format(self.config.name, self.nside, suffix))
+        if os.path.isfile(filename):
+            print('Using existing workspace:', filename)
+            wsp.read_from(filename)
+            if return_filename:
+                return filename
+        else:
+            return False
+

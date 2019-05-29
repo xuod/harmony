@@ -183,7 +183,7 @@ class Observable(object):
     def get_randomized_map(self, ibin):
         raise NotImplementedError
 
-    def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
+    def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True, save_workspace=True):
         raise NotImplementedError
 
     def plot_cls(self, hm, cls, nrows, ncols, figname='', titles=None, ylabels=None,

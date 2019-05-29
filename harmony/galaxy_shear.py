@@ -111,7 +111,7 @@ class Shear(Observable):
     def get_randomized_map(self, ibin):
         raise NotImplementedError
 
-    def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
+    def _compute_auto_cls_old(self, hm, ibin, nrandom=0, save=True):
         npix = self.npix
 
         cat = self.cats[ibin]
@@ -154,19 +154,22 @@ class Shear(Observable):
 
         return cls
 
-
-    def _compute_auto_cls_update(self, hm, ibin, nrandom=0, save=True):
+    # @profile
+    def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True, save_workspace=True):
         npix = self.npix
 
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
 
-        wsp = nmt.NmtWorkspace()
         field_0 = self.get_field(hm, ibin)
 
-        wsp.compute_coupling_matrix(field_0, field_0, hm.b)
-        if nrandom > 0 and self.nproc != 0:
-            wsp_filename = hm.save_workspace(wsp, '{}_{}_{}_{}'.format(self.obs_name, self.obs_name, ibin, ibin), return_filename=True)
+        wsp = nmt.NmtWorkspace()
+        suffix = '{}_{}_{}_{}'.format(self.obs_name, self.obs_name, ibin, ibin)
+        wsp_filename = hm.load_workspace_if_exists(wsp, suffix, return_filename=True)
+        if not wsp_filename: #load_workspace_if_exists
+            wsp.compute_coupling_matrix(field_0, field_0, hm.b)
+            if save_workspace:
+                wsp_filename = hm.save_workspace(wsp, suffix, return_filename=True)
 
         cls = {}
         cls['true'] = compute_master(field_0, field_0, wsp)
@@ -447,6 +450,7 @@ def apply_random_rotation(e1_in, e2_in):
     e2_out = - e1_in * sin + e2_in * cos
     return e1_out, e2_out
 
+# @profile
 def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
     e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
 
@@ -461,49 +465,18 @@ def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
 
     return e1_map, e2_map
 
+# @profile
 def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
     e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
     return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
+# @profile
 def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
-    # e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
-    #
-    # e1_map = np.zeros(npix, dtype=float)
-    # e2_map = np.zeros(npix, dtype=float)
-    #
-    # np.add.at(e1_map, ipix, e1_rot)
-    # np.add.at(e2_map, ipix, e2_rot)
-    #
-    # e1_map[bool_mask] /= count[bool_mask]
-    # e2_map[bool_mask] /= count[bool_mask]
-
-    # e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
-
-    # field = nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
-
     cls = compute_master(field, field, wsp)
-
     return cls
 
 def _randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, template_fields, wsp_dir):
-    # e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
-    #
-    # e1_map = np.zeros(npix, dtype=float)
-    # e2_map = np.zeros(npix, dtype=float)
-    #
-    # np.add.at(e1_map, ipix, e1_rot)
-    # np.add.at(e2_map, ipix, e2_rot)
-    #
-    # e1_map[bool_mask] /= count[bool_mask]
-    # e2_map[bool_mask] /= count[bool_mask]
-
-    # e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
-
-    # field = nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
-
-    # cls = compute_master(field, field_t, wsp)
-
     cls = {}
     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
     for tempname, temp in template_fields.items():
@@ -519,28 +492,11 @@ def _randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, coun
 
     return cls
 
-# def _multiproc_randrot_maps(cat, ipix, npix, bool_mask, count):
-#     e1_rot, e2_rot = apply_random_rotation(cat['e1'], cat['e2'])
-#
-#     e1_map = np.zeros(npix, dtype=float)
-#     e2_map = np.zeros(npix, dtype=float)
-#
-#     np.add.at(e1_map, ipix, e1_rot)
-#     np.add.at(e2_map, ipix, e2_rot)
-#
-#     e1_map[bool_mask] /= count[bool_mask]
-#     e2_map[bool_mask] /= count[bool_mask]
-#
-#     return e1_map, e2_map
-
 
 def _multiproc_randrot_cls(nsamples, args, pos):
     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp_filename = args
 
     wsp = nmt.NmtWorkspace()
-    # b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
-    # field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
-    # wsp.compute_coupling_matrix(field_0, field_0, b)
     wsp.read_from(wsp_filename)
 
     _cls = []
