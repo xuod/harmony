@@ -66,8 +66,8 @@ def log_ell_bins(lmin, lmax, n_ell_bins):
     return ells
 
 
-def make_nmtbin_logspaced(nside, lmin, lmax, n_ell_bins):
+def make_nmtbin_logspaced(nside, lmin, lmax, n_ell_bins, **kwargs):
     ells = log_ell_bins(lmin, lmax, n_ell_bins)
     bpws = np.concatenate([i*np.ones(len(x), dtype=int) for i,x in enumerate(ells)])
     ells = np.concatenate(ells)
-    return nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)))
+    return nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)), lmax=lmax, **kwargs)

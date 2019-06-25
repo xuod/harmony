@@ -61,6 +61,8 @@ class Harmony(object):
         if obs2 is None:
             same_obs = True
             obs2 = obs1
+        else:
+            same_obs = False
 
         self.check_cls_obs(obs1, obs2)
 

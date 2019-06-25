@@ -1,7 +1,7 @@
 from .observable import *
 
 class Shear(Observable):
-    def __init__(self, config, nside, mode, nzbins, data_dir='../data', *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, data_dir='../data', dict=None, flip_e2=False, *args, **kwargs):
         self.obs_name = 'galaxy_shear'
         self.map_names = ['count', 'e1', 'e2']
 
@@ -19,6 +19,9 @@ class Shear(Observable):
 
         if mode=='mock':
             self._init_mock()
+        
+        if mode=='full':
+            self._init_full(dict, flip_e2)
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
@@ -66,6 +69,23 @@ class Shear(Observable):
             cat['e2'] = _cat['e2']
 
             self.cats[ibin] = cat
+
+    def _init_full(self, dict, flip_e2):
+        for ibin in tqdm(self.zbins):
+            filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
+            _cat = fits.open(filename)[1].data
+
+            cat = {}
+            cat['ra'] = _cat[dict['ra']]
+            cat['dec'] = _cat[dict['dec']]
+
+            cat['e1'] = _cat[dict['e1']]
+            cat['e2'] = _cat[dict['e2']]
+
+            if flip_e2:
+                cat['e2'] *= -1.0
+
+            self.cats[ibin] = cat        
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
