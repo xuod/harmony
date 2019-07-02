@@ -1,7 +1,7 @@
 from .observable import *
 
 class Shear(Observable):
-    def __init__(self, config, nside, mode, nzbins, data_dir='../data', dict=None, flip_e2=False, *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, data_dir='../data', *args, **kwargs):
         self.obs_name = 'galaxy_shear'
         self.map_names = ['count', 'e1', 'e2']
 
@@ -14,14 +14,20 @@ class Shear(Observable):
         if mode.startswith('buzzard'):
             self._init_buzzard()
 
-        if mode=='data_sub' or mode=='mastercat':
+        elif mode=='data_sub' or mode=='mastercat':
             self._init_data()
 
-        if mode=='mock':
+        elif mode=='mock':
             self._init_mock()
         
-        if mode=='full':
-            self._init_full(dict, flip_e2)
+        elif mode=='full':
+            self._init_full(kwargs['dict'], kwargs['flip_e2'])
+
+        elif mode=='flask':
+            self._init_flask(kwargs['isim'], kwargs['cookie'])
+        
+        else:
+            raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
@@ -85,7 +91,22 @@ class Shear(Observable):
             if flip_e2:
                 cat['e2'] *= -1.0
 
-            self.cats[ibin] = cat        
+            self.cats[ibin] = cat    
+
+    def _init_flask(self, isim, cookie):
+        for ibin in tqdm(self.zbins):
+            filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
+            _cat = fits.open(filename)[1].data
+
+            cat = {}
+            cat['ra'] = _cat['RA']
+            cat['dec'] = _cat['DEC']
+
+            cat['e1'] = _cat['GAMMA1']
+            cat['e2'] = -1.0 * _cat['GAMMA2']
+
+            self.cats[ibin] = cat   
+
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
@@ -103,19 +124,20 @@ class Shear(Observable):
         if save:
             self.save_maps()
 
-    def compute_ipix(self):
-        if not hasattr(self, 'ipix'):
-            self.ipix = {}
-            for ibin in tqdm(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
-                cat = self.cats[ibin]
-                self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    def _make_field(self, hm, ibin, include_templates=True):
+        self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
+                                            templates=self._get_templates_array() if include_templates else None,
+                                            purify_e=hm.purify_e, purify_b=hm.purify_b)
 
-    def get_field(self, hm, ibin, include_templates=True):
-        return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                            templates=self._get_templates_array() if include_templates else None,
-                            purify_e=hm.purify_e, purify_b=hm.purify_b)
+    def make_fields(self, hm, include_templates=True):
+        self.fields = []
+        for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+            self._make_field(hm, ibin, include_templates=True)
 
-    def get_randomized_fields(self, hm, ibin, nsamples=1):
+    def get_field(self, hm, ibin):
+        return self.fields[ibin]
+
+    def get_randomized_field(self, hm, ibin, nsamples=1):
         bool_mask = (self.maps[ibin]['count'] > 0.)
         self.compute_ipix()
         fields = []
@@ -130,6 +152,53 @@ class Shear(Observable):
 
     def get_randomized_map(self, ibin):
         raise NotImplementedError
+
+    def compute_ipix(self): 
+        if not hasattr(self, 'ipix'):
+            self.ipix = {}
+            for ibin in tqdm(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
+                cat = self.cats[ibin]
+                self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+
+    def _get_info(self):
+        import pandas as pd
+
+        info = {}
+        info['e1std'] = []
+        info['e2std'] = []
+        info['e12std'] = []
+        info['fsky'] = []
+        info['Ngal'] = []
+        info['area (std)'] = []
+        info['nbar (gal/std)'] = []
+        info['nbar (gal/arcmin)'] = []
+
+        for i in range(nzbins):
+            e1std = np.std(shear.cats[i]['e1'])
+            e2std = np.std(shear.cats[i]['e2'])
+            e12std = 0.5*(e1std+e2std)
+            fsky = np.sum(shear.masks[i]) * 1./ len(shear.masks[i])
+            Ngal = np.sum(shear.maps[i]['count'][shear.masks[i].astype(bool)])
+            area = 4*np.pi * fsky
+            nbar_std = Ngal / area
+            nbar_arcmin = nbar_std / (180*60/np.pi)**2
+            
+            info['e1std'].append(e1std)
+            info['e2std'].append(e2std)
+            info['e12std'].append(e12std)
+            info['fsky'].append(fsky)
+            info['Ngal'].append(Ngal)
+            info['area (std)'].append(area)
+            info['nbar (gal/std)'].append(nbar_std)
+            info['nbar (gal/arcmin)'].append(nbar_arcmin)
+
+            #     print("{} {:14.9f} {:14.9f} {:14.9f}".format(i, e1std, e2std, 0.5*(e1std+e2std)))
+
+
+        df = pd.DataFrame(data=info)
+        
+        return df
+    
 
     def _compute_auto_cls_old(self, hm, ibin, nrandom=0, save=True):
         npix = self.npix

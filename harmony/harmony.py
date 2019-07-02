@@ -12,15 +12,17 @@ import pickle
 import numpy as np
 
 class Harmony(object):
-    def __init__(self, config, nside, aposize=2.0, apotype='C1', purify_e=False, purify_b=False, nlb=32, lmax=None, b=None, nproc=0):
+    def __init__(self, config, nside, aposize=2.0, apotype='C1', b=None, nproc=0, **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
 
         self.aposize = aposize
         self.apotype = apotype
-        self.purify_e = purify_e
-        self.purify_b = purify_b
+
+        self.purify_e = kwargs.get('purify_e', False)
+        self.purify_b = kwargs.get('purify_b', False)
+        self.field_kw = {'purify_e':self.purify_e, 'purify_b':self.purify_b}
 
         if b is None:
             self.lmax = lmax
@@ -45,6 +47,18 @@ class Harmony(object):
             self.cls[key] = {}
         else:
             print("Replacing cls[%s]".format(str(key)))
+
+    def save_cls(self):
+        make_directory(self.config.path_output+'/'+self.name)
+        filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
+        pickle.dump(self.cls, open(filename, mode='wb'))
+
+    def load_cls(self):
+        filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
+        try:
+            self.cls = pickle.load(open(filename, mode='rb'))
+        except FileNotFoundError:
+            print("Cls file does not exists: {}".format(filename))
 
     def compute_cross_cls(self, obs1, obs2, i1, i2, save=True):
         self.check_cls_obs(obs1, obs2)
@@ -89,6 +103,28 @@ class Harmony(object):
             if save:
                 self.save_cls()
 
+    def compute_all_obs_cls(self, obs, nrandom=0, save=True, save_workspace=True):
+        self.check_cls_obs(obs, obs)
+
+        for i1 in tqdm(obs.zbins, desc='Harmony.compute_all_auto_cls [obs:{}]'.format(obs.obs_name)):
+            field1 = obs.get_field(self, i1)
+            for i2 in obs.zbins:
+                if (i2,i1) in self.cls[(obs.obs_name, obs.obs_name)].keys():
+                        # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
+                        # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
+                        continue
+                else:
+                    if i1 == i2:
+                        ibin = i1
+                        self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save=save, save_workspace=save_workspace)
+                    else:
+                        field2 = obs.get_field(self, i2)
+                        self.cls[(obs.obs_name, obs.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
+
+        if save:
+            self.save_cls()
+
+
     def compute_cross_template_cls(self, obs, nrandom, save=True):
         for tempname in obs.template_dir.keys():
             key = (obs.obs_name, tempname)
@@ -116,18 +152,6 @@ class Harmony(object):
 
             if save:
                 self.save_cls()
-
-    def save_cls(self):
-        make_directory(self.config.path_output+'/'+self.name)
-        filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
-        pickle.dump(self.cls, open(filename, mode='wb'))
-
-    def load_cls(self):
-        filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
-        try:
-            self.cls = pickle.load(open(filename, mode='rb'))
-        except FileNotFoundError:
-            print("Cls file does not exists: {}".format(filename))
 
     def save_workspace(self, wsp, suffix, return_filename=False):
         make_directory(self.config.path_output+'/'+self.name)

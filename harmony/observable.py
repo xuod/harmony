@@ -13,7 +13,7 @@ import logging
 import scipy
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, nproc=0):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, nproc=0, *args, **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -54,7 +54,7 @@ class Observable(object):
     #     print('Method load_catalogs not implemented, nothing to do.')
 
     def make_maps(self):
-        print('Method make_maps not implemented, nothing to do.')
+        raise NotImplementedError
 
     def save_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
@@ -80,6 +80,18 @@ class Observable(object):
                 figfile = os.path.join(self.config.path_figures, self.name, '{}_{}_{}_nside{}_bin{}.png'.format(map_name, self.config.name, self.mode, self.nside, ibin))
                 plt.savefig(figfile, dpi=300)
                 plt.show()
+    
+    def make_fields(self):
+        raise NotImplementedError
+
+    def _get_info(self):
+        raise NotImplementedError
+
+    def get_info(self, tofile=None):
+        info = self._get_info()
+
+        if tofile is not None:
+            df.to_csv(tofile)
 
     def make_masks_apo(self, hm):
         self.masks_apo = {}
@@ -177,7 +189,7 @@ class Observable(object):
     def get_field(self, hm, ibin, include_templates=True):
         raise NotImplementedError
 
-    def get_randomized_fields(self, hm, ibin, nsamples=1):
+    def get_randomized_field(self, hm, ibin, nsamples=1):
         raise NotImplementedError
 
     def get_randomized_map(self, ibin):
