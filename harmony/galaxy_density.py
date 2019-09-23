@@ -8,6 +8,10 @@ class Galaxy(Observable):
 
         super(Galaxy, self).__init__(config, nside, mode, nzbins, self.obs_name, self.map_names, *args, **kwargs)
 
+        self.spin = 0
+        self.kernel = 'nz_lens'
+        self.type = twopoint.Types.galaxy_position_fourier
+
         self.data_dir = data_dir
         self.mask_dir = mask_dir
 
@@ -27,8 +31,8 @@ class Galaxy(Observable):
     def init_redmagic_Y3(self, nzbins):
         basename = 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_'
         cats_name = ['redmagic_highdens_0.5', 'redmagic_highlum_1.0', 'redmagic_higherlum_1.5'] #
-        mask_ext = '_vlim_zmask.fit'
-        cats_ext = ['-10.fit', '-04.fit', '-01.fit']
+        # mask_ext = '_vlim_zmask.fit'
+        # cats_ext = ['-10.fit', '-04.fit', '-01.fit']
 
         which_cat_zbins = [0,0,0,1,2]
 
@@ -86,8 +90,9 @@ class Galaxy(Observable):
         if save:
             self.save_maps()
 
-    def get_field(self, hm, ibin, include_templates=True):
-        return nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
+    def make_fields(self, hm, include_templates=True):
+        for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+            self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
 
     def _compute_auto_cls(self, hm, ibin, nrandom=0, save=True):
         npix = hp.nside2npix(self.nside)
