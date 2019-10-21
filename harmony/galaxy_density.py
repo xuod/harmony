@@ -29,8 +29,8 @@ class Galaxy(Observable):
             self.init_BAO_Y1(self.nzbins, use_weights)
 
     def init_redmagic_Y3(self, nzbins):
-        basename = 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_'
-        cats_name = ['redmagic_highdens_0.5', 'redmagic_highlum_1.0', 'redmagic_higherlum_1.5'] #
+        # basename = 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_'
+        # cats_name = ['redmagic_highdens_0.5', 'redmagic_highlum_1.0', 'redmagic_higherlum_1.5'] #
         # mask_ext = '_vlim_zmask.fit'
         # cats_ext = ['-10.fit', '-04.fit', '-01.fit']
 
@@ -38,11 +38,12 @@ class Galaxy(Observable):
 
         for ibin in tqdm(self.zbins, desc='Galaxy.init_redmagic_Y3'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-            self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_binary_nside%i.fits'%(self.nside)), verbose=False)
-            comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
-            comp[comp == hp.UNSEEN] = 0.0
-            self.maps[ibin]['completeness'] = comp
-
+            # self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_binary_nside%i.fits'%(self.nside)), verbose=False)
+            # comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
+            # comp[comp == hp.UNSEEN] = 0.0
+            # self.maps[ibin]['completeness'] = comp
+            self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False)
+            self.maps[ibin]['completeness'] = hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False)
 
     def init_redmagic_Y1(self, nzbins):
         basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'

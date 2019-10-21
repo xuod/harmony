@@ -37,8 +37,13 @@ class Harmony(object):
         # self.lmax = b.lmax
         self.ell = self.b.get_effective_ells()
 
-        self.cls = {}
-        self.cls['ell'] = self.ell
+        try:
+            self.load_cls()
+        except FileNotFoundError:
+            self.cls = {}
+            self.cls['ell'] = self.ell
+        else:
+            assert np.allclose(self.ell, self.cls['ell'])
 
         self.wsp = {}
 
@@ -140,6 +145,24 @@ class Harmony(object):
                 continue
             else:
                 self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp, return_wsp=False)
+    
+    def get_all_workspaces(self, obs1, obs2=None, save_wsp=True):
+        if obs2 is None:
+            same_obs = True
+            obs2 = obs1
+        else:
+            same_obs = False
+
+        self.check_update_cls(obs1, obs2)
+ 
+        for i1,i2 in tqdm(itertools.product(obs1.zbins, obs2.zbins), desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+            if (i2,i1) in self.wsp[(obs1.obs_name, obs2.obs_name)].keys() and same_obs:
+                # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
+                # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
+                continue
+            else:
+                self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
+
 
     def get_workspace(self, obs1, obs2, i1, i2, save_wsp=True):
         try:
@@ -157,12 +180,20 @@ class Harmony(object):
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
         pickle.dump(self.cls, open(filename, mode='wb'))
 
-    def load_cls(self):
+    def load_cls(self, print_summary=True):
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
-        try:
-            self.cls = pickle.load(open(filename, mode='rb'))
-        except FileNotFoundError:
-            print("Cls file does not exists: {}".format(filename))
+        self.cls = pickle.load(open(filename, mode='rb'))
+
+        if print_summary:
+            print("Loaded Cl's info:")
+            print('  - Multipole bins ({}) = '.format(len(self.cls['ell'])), self.cls['ell'])
+            for obs_key in self.cls.keys():
+                if obs_key != 'ell':
+                    print("  - Observables", obs_key)
+                    for bin_key in self.cls[obs_key].keys():
+                        print("     - Redshift bins", bin_key)
+                        for tr_key, cl in self.cls[obs_key][bin_key].items():
+                            print("          -", tr_key, cl.shape)
 
     def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=True, return_cls=True, check_cls=True, save_wsp=True):
         if obs2 is None:

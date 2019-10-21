@@ -5,6 +5,7 @@ from sklearn.covariance import GraphicalLassoCV
 import numpy as np
 import healpy as hp
 import castor as ca
+import warnings
 
 try:
     FileNotFoundError
@@ -81,12 +82,16 @@ def get_chi2(obs, randoms, smooth=False, return_pval=False):
 #             assert type(f_ell) == np.ndarray
 #     return nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)), lmax=lmax, f_ell=f_ell, **kwargs)
 
-def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None, verbose=False, **kwargs):
+def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None, verbose=False, b_lmax=None, bins_ell=None, **kwargs):
     # Define ell range
     ells = np.arange(lmin, lmax+1)
 
     # Make bin limits
-    bins_ell = bin_func(lmin, lmax, n_ell_bins+1).astype(float)
+    if bins_ell is not None:
+        warnings.warn("Warning: using provided `bins_ell` instead of computing it from `bin_func`.")
+        assert bins_ell[0]==lmin and bins_ell[-1]==lmax
+    else:
+        bins_ell = bin_func(lmin, lmax, n_ell_bins+1).astype(float)
 
     # Get bands
     bpws = np.digitize(ells.astype(float), bins_ell) - 1
@@ -103,11 +108,14 @@ def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None,
         else:
             assert type(f_ell) == np.ndarray
             assert len(f_ell) == len(ells)
+        
+    b = nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)), f_ell=f_ell, lmax=b_lmax, **kwargs)
 
-    b = nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)), f_ell=f_ell, **kwargs)
+    if b.get_n_bands() != n_ell_bins:
+        warnings.warn("Warning: for some reason, b.get_n_bands() != n_ell_bins")
 
     if verbose:
-        for i in range(n_ell_bins):
+        for i in range(b.get_n_bands()):
             print("Bin {:4d} = [{:5d} - {:5d}]".format(i, b.get_ell_list(i)[0], b.get_ell_list(i)[-1]))
 
     return b

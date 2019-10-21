@@ -15,8 +15,13 @@ class Shear(Observable):
 
         self.cats = {}
 
-        assert mask_mode in ['binary', 'count']
-        self.mask_mode = mask_mode
+        mask_mode_split = mask_mode.split('>')
+        assert mask_mode_split[0] in ['binary', 'count']
+        self.mask_mode = mask_mode_split[0]
+        if len(mask_mode_split) == 2:
+            self.count_cut = int(mask_mode_split[1])
+        else:
+            self.count_cut = 0
 
         if mode.startswith('buzzard'):
             self._init_buzzard()
@@ -123,19 +128,34 @@ class Shear(Observable):
             cat = self.cats[ibin]
             quantities, count, mask = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
                                                     quantity=[cat[_x] for _x in keys],
-                                                    nside=self.nside, fill_UNSEEN=True, mask=None, weight=None)
+                                                    nside=self.nside, fill_UNSEEN=False, mask=None, weight=None)
             for j, key in enumerate(keys):
                 self.maps[ibin][key] = quantities[j]
 
-            self.maps[ibin]['count'] = count
-            if self.mask_mode == 'binary':
-                self.masks[ibin] = mask.astype(float)
-            elif self.mask_mode == 'count':
-                self.masks[ibin] = count.astype(float)
-                # self.masks[ibin][np.logical_not(mask.astype(bool))] = 0.0
+            # self.maps[ibin]['count'] = count
+            # count_cut_mask = (count>self.count_cut).astype(float)
+            # if self.mask_mode == 'binary':
+            #     self.masks[ibin] = mask.astype(float) * count_cut_mask
+            # elif self.mask_mode == 'count':
+            #     self.masks[ibin] = count.astype(float) * count_cut_mask
+            #     # self.masks[ibin][np.logical_not(mask.astype(bool))] = 0.0
+
+            # Count cut
+            count_cut_mask = (count>self.count_cut)
+
+            self.maps[ibin]['count'] = count * count_cut_mask.astype(int)
+            self.masks[ibin] = mask.astype(float) * count_cut_mask.astype(float)
 
         if save:
             self.save_maps()        
+
+    def make_masks_apo(self, hm):
+        super(Shear, self).make_masks_apo(hm)
+
+        # Apply inverse-variance weighting after apodization
+        if self.mask_mode =='count':
+            for ibin in self.zbins:
+                self.masks_apo[ibin] *= self.maps[ibin]['count']
 
     def make_fields(self, hm, include_templates=True):
         for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
@@ -248,7 +268,7 @@ class Shear(Observable):
 
         return np.array(_cls)
 
-    def plot_auto_cls(self, hm, **kwargs):
+    def plot_auto_cls(self, hm, remove_Nl=False, **kwargs):
         cls = {}
         titles = {}
         ylabels = {}
@@ -262,11 +282,23 @@ class Shear(Observable):
                 k = (i,j)
                 titles[k] = _titles[j] + ' [bin %i]'%(i+1)
                 ylabels[k] = '$C_\\ell$'
+                ylabels[k] = '$C_\\ell$'
+                if 'factor_ell' in kwargs.keys():
+                    if kwargs['factor_ell'] == 1:
+                        ylabels[k] = '$\\ell C_\\ell$'
+                    if kwargs['factor_ell'] == 2:
+                        ylabels[k] = '$\\ell (\\ell+1) C_\\ell$'
+                else:
+                    ylabels[k] = '$C_\\ell$'
                 cls[k] = {}
-                cls[k]['true'] = hm.cls[(self.obs_name, self.obs_name)][(zbin,zbin)]['true'][idx_EB[j]]
-                cls[k]['random'] = hm.cls[(self.obs_name, self.obs_name)][(zbin,zbin)]['random'][:,idx_EB[j],:]
+                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['true'][idx_EB[j]])
+                cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['random'][:,idx_EB[j],:])
+                if remove_Nl:
+                    clr_r_m = np.mean(cls[k]['random'], axis=0)
+                    cls[k]['true'] -= clr_r_m
+                    cls[k]['random'] -= clr_r_m
 
-        return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels)
+        return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, **kwargs)
 
     def plot_cls_BB_only(self, hm, remove_Nl=False, **kwargs):
         cls = {}

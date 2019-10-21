@@ -14,7 +14,7 @@ import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix=''):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -22,6 +22,8 @@ class Observable(object):
 
         self.map_names = map_names
         self.obs_name = obs_name
+        if suffix != '':
+            self.obs_name += '_' + suffix
         self.mode = mode
         # self.nzbins = nzbins
         self.spin = None
@@ -86,7 +88,7 @@ class Observable(object):
         for i, ibin in tqdm(enumerate(self.zbins), desc='{}.plot_maps'.format(self.obs_name)):
             for j, map_name in enumerate(self.map_names):
                 if subplots:
-                    plt.axes(axes[i,j])
+                    plt.sca(axes[i,j])
                     hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin), hold=True)
                 else:
                     hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin))
@@ -95,7 +97,7 @@ class Observable(object):
                     plt.show()
         
         if subplots:
-            plt.tight_layout()
+            # plt.tight_layout()
             figfile = os.path.join(self.config.path_figures, self.name, 'maps_{}_{}_nside{}_bin{}.png'.format(self.config.name, self.mode, self.nside, ibin))
             plt.savefig(figfile, dpi=300)
             plt.show()
@@ -126,12 +128,12 @@ class Observable(object):
         raise NotImplementedError
 
     def get_info(self, tofile=None):
-        info = self._get_info()
+        df = self._get_info()
 
         if tofile is not None:
             df.to_csv(tofile)
 
-        return info
+        return df
 
     def _get_templates_array(self):
         if not self.has_templates:
@@ -139,17 +141,22 @@ class Observable(object):
         else:
             templates = []
             for key, temp in self.templates_dir.items():
-                templates.append(temp)
-            templates = np.expand_dims(np.array(templates), axis=1)
-            return templates
+                templates.append(list(temp))
+            # templates = np.expand_dims(np.array(templates), axis=1)
+            return np.array(templates)
 
-    def _init_templates(self):
-        self.has_templates = True
-        self.templates_dir = {}
+    def _check_init_templates(self):
+        if not hasattr(self, 'templates_dir'):
+            self.has_templates = True
+            self.templates_dir = {}
 
-    def load_template(self, filename, tempname):
-        self._init_templates()
-        self.templates_dir[tempname] =  hp.read_map(filename, verbose=False)
+    def add_template(self, template_name, template_map):
+        self._check_init_templates()
+        self.templates_dir[template_name] = template_map
+
+    def load_template(self, template_name, template_filename):
+        self._check_init_templates()
+        self.templates_dir[template_name] =  hp.read_map(template_filename, verbose=False)
 
     def load_all_templates_from_dir(self, templates_dir):
         self._init_templates()
@@ -193,30 +200,31 @@ class Observable(object):
         # self.templates = np.expand_dims(self.templates, axis=1)
 
     def load_PSF(self, hm, PSF_dir, make_fields=True):
-        psf_maps = {}
+        raise NotImplementedError
+        # psf_maps = {}
 
-        keys = ['obs_e1', 'obs_e2', 'piff_e1', 'piff_e2', 'mask']
-        for k in keys:
-            psf_maps[k] = hp.read_map(os.path.join(PSF_dir, 'PSF_%s_nside%i.fits'%(k, self.nside)), verbose=False)
+        # keys = ['obs_e1', 'obs_e2', 'piff_e1', 'piff_e2', 'mask']
+        # for k in keys:
+        #     psf_maps[k] = hp.read_map(os.path.join(PSF_dir, 'PSF_%s_nside%i.fits'%(k, self.nside)), verbose=False)
 
-        self.psf_maps = {}
-        self.psf_maps['obs'] = [psf_maps['obs_e1'], -1.0*psf_maps['obs_e2']]
-        self.psf_maps['piff'] = [psf_maps['piff_e1'], -1.0*psf_maps['piff_e2']]
-        self.psf_maps['res'] = [psf_maps['obs_e1']-psf_maps['piff_e1'], -1.0*(psf_maps['obs_e2']-psf_maps['piff_e2'])]
+        # self.psf_maps = {}
+        # self.psf_maps['obs'] = [psf_maps['obs_e1'], -1.0*psf_maps['obs_e2']]
+        # self.psf_maps['piff'] = [psf_maps['piff_e1'], -1.0*psf_maps['piff_e2']]
+        # self.psf_maps['res'] = [psf_maps['obs_e1']-psf_maps['piff_e1'], -1.0*(psf_maps['obs_e2']-psf_maps['piff_e2'])]
 
-        self.psf_mask_apo = nmt.mask_apodization(psf_maps['mask'], aposize=hm.aposize, apotype=hm.apotype)
+        # self.psf_mask_apo = nmt.mask_apodization(psf_maps['mask'], aposize=hm.aposize, apotype=hm.apotype)
 
-        self.psf_fields = {}
-        for k in self.psf_maps.keys():
-            if make_fields:
-                self.psf_fields[k]  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
-            else:
-                self.psf_fields[k]  = None
-        # self.psf_fields['obs']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1'], -1.0*self.psf_maps['obs_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
-        # self.psf_fields['piff'] = nmt.NmtField(psf_mask_apo, [self.psf_maps['piff_e1'], -1.0*self.psf_maps['piff_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
-        # self.psf_fields['res']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1']-self.psf_maps['piff_e1'], -1.0*(self.psf_maps['obs_e1']-self.psf_maps['piff_e2'])], purify_e=hm.purify_e, purify_b=hm.purify_b)
-        #
-        # return psf_maps
+        # self.psf_fields = {}
+        # for k in self.psf_maps.keys():
+        #     if make_fields:
+        #         self.psf_fields[k]  = nmt.NmtField(self.psf_mask_apo, self.psf_maps[k], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        #     else:
+        #         self.psf_fields[k]  = None
+        # # self.psf_fields['obs']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1'], -1.0*self.psf_maps['obs_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # # self.psf_fields['piff'] = nmt.NmtField(psf_mask_apo, [self.psf_maps['piff_e1'], -1.0*self.psf_maps['piff_e2']], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # # self.psf_fields['res']  = nmt.NmtField(psf_mask_apo, [self.psf_maps['obs_e1']-self.psf_maps['piff_e1'], -1.0*(self.psf_maps['obs_e1']-self.psf_maps['piff_e2'])], purify_e=hm.purify_e, purify_b=hm.purify_b)
+        # #
+        # # return psf_maps
 
     def _compute_random_auto_cls(self, hm, ibin, nrandom=0, save_wsp=True):
         raise NotImplementedError
@@ -229,7 +237,7 @@ class Observable(object):
 
     def plot_cls(self, hm, cls, nrows, ncols, figname='', titles=None, ylabels=None,
                     showy0=False, symy0=False, chi2method=None, blindyaxis=False, fig=None, return_fig=False,
-                    factor_ell=0, c=None, ls=None, pdf=False, xlim=None, ylim=None, xscale='linear'):
+                    factor_ell=0, c=None, ls=None, pdf=False, xlim=None, ylim=None, xscale='linear', yscale='linear'):
         if fig is None:
             fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, 3*nrows))
         else:
@@ -271,6 +279,7 @@ class Observable(object):
                 # else:
                 #     ax.set_xlim(0, hm.b.lmax)
                 ax.set_xscale(xscale)
+                ax.set_yscale(yscale)
 
                 if ylim is not None:
                     ax.set_ylim(ylim)
