@@ -33,7 +33,7 @@ class Shear(Observable):
             self._init_mock()
         
         elif mode=='full':
-            self._init_full(kwargs['dict'], kwargs['flip_e2'])
+            self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'])
 
         elif mode=='flask':
             self._init_flask(kwargs['isim'], kwargs['cookie'])
@@ -91,9 +91,9 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
-    def _init_full(self, dict, flip_e2):
+    def _init_full(self, filename_template, dict, flip_e2):
         for ibin in tqdm(self.zbins):
-            filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
+            filename = os.path.join(self.data_dir, filename_template.format(ibin+1))
             _cat = fits.open(filename)[1].data
 
             cat = {}

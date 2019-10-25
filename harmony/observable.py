@@ -14,7 +14,7 @@ import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix=''):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside

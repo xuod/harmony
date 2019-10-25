@@ -38,7 +38,7 @@ class Harmony(object):
         self.ell = self.b.get_effective_ells()
 
         try:
-            self.load_cls()
+            self.load_cls(kwargs.get('print_summary', True))
         except FileNotFoundError:
             self.cls = {}
             self.cls['ell'] = self.ell
@@ -91,7 +91,7 @@ class Harmony(object):
         else:
             raise RuntimeError("Workspace file does not exist.")
 
-    def load_workspace_bpws(self, obs1, obs2, i1, i2, return_wsp=True):
+    def load_workspace_bpws(self, obs1, obs2, i1, i2):
         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
         filename_bpws = filename[:-4]+'_bpws.npy'
 
@@ -163,7 +163,6 @@ class Harmony(object):
             else:
                 self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
 
-
     def get_workspace(self, obs1, obs2, i1, i2, save_wsp=True):
         try:
             return self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
@@ -174,6 +173,17 @@ class Harmony(object):
             except RuntimeError:
                 wsp = self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp, return_wsp=True)
             return wsp
+
+    def get_workspace_bpws(self, obs1, obs2, i1, i2, save_wsp=True):
+        try:
+            bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
+            return bpws
+        except RuntimeError:
+            try:
+                wsp = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
+                return wsp.get_bandpower_windows()
+            except:
+                raise RuntimeError("Couldn't load or prepare bpws.")
 
     def save_cls(self):
         make_directory(self.config.path_output+'/'+self.name)
@@ -314,7 +324,7 @@ class Harmony(object):
                 self.save_cls()
 
     def bin_cl_theory(self, cl_in, obs1, obs2, i1, i2, fix_pixwin=False):
-        bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
+        bpws = self.get_workspace_bpws(obs1, obs2, i1, i2)
         if isinstance(cl_in, dict):
             cl = cl_in[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
         else:
