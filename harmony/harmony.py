@@ -233,7 +233,7 @@ class Harmony(object):
         if return_cls:
             return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
 
-    def compute_all_cls(self, obs1, obs2=None, save_cls=True, save_wsp=True):
+    def compute_all_cls(self, obs1, obs2=None, save_cls=True, save_wsp=True, auto_only=False):
         if obs2 is None:
             same_obs = True
             obs2 = obs1
@@ -242,7 +242,13 @@ class Harmony(object):
 
         self.check_update_cls(obs1, obs2)
 
-        for i1,i2 in tqdm(itertools.product(obs1.zbins, obs2.zbins), desc='Harmony.compute_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+        if auto_only:
+            assert same_obs
+            bins_prod = [(_i,_i) for _i in obs1.zbins]
+        else:
+            bins_prod = itertools.product(obs1.zbins, obs2.zbins)
+
+        for i1,i2 in tqdm(bins_prod, desc='Harmony.compute_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             if (i2,i1) in self.cls[(obs1.obs_name, obs2.obs_name)].keys() and same_obs:
                 # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
                 # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]

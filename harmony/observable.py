@@ -78,23 +78,36 @@ class Observable(object):
             for map_name in self.map_names:
                 self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), verbose=False)
 
-    def plot_maps(self, subplots=True):
+    def plot_maps(self, subplots=True, show_masks=True, **kwargs):
         make_directory(self.config.path_figures+'/'+self.name)
         if subplots:
             nrow = self.nzbins
             ncol = len(self.map_names)
+            if show_masks:
+                ncol += 1 
             fig, axes = plt.subplots(nrow,ncol, figsize=(4*ncol,3*nrow))
+            axes = np.atleast_2d(axes)
 
         for i, ibin in tqdm(enumerate(self.zbins), desc='{}.plot_maps'.format(self.obs_name)):
             for j, map_name in enumerate(self.map_names):
                 if subplots:
                     plt.sca(axes[i,j])
-                    hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin), hold=True)
+                    hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin), hold=True, **kwargs)
                 else:
-                    hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin))
+                    hp.mollview(self.maps[ibin][map_name], title='{} (bin {})'.format(map_name, ibin), **kwargs)
                     figfile = os.path.join(self.config.path_figures, self.name, '{}_{}_{}_nside{}_bin{}.png'.format(map_name, self.config.name, self.mode, self.nside, ibin))
                     plt.savefig(figfile, dpi=300)
                     plt.show()
+            if show_masks:
+                if subplots:
+                    plt.sca(axes[i,j+1])
+                    hp.mollview(self.masks[ibin], title='{} (bin {})'.format('mask', ibin), hold=True, **kwargs)
+                else:
+                    hp.mollview(self.masks[ibin], title='{} (bin {})'.format('mask', ibin), **kwargs)
+                    figfile = os.path.join(self.config.path_figures, self.name, '{}_{}_{}_nside{}_bin{}.png'.format('mask', self.config.name, self.mode, self.nside, ibin))
+                    plt.savefig(figfile, dpi=300)
+                    plt.show()
+
         
         if subplots:
             # plt.tight_layout()

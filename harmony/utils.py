@@ -22,6 +22,10 @@ def compute_master(f_a, f_b, wsp, clb=None) :
     cl_decoupled=wsp.decouple_cell(cl_coupled,cl_bias=clb)
     return cl_decoupled
 
+def hpunseen2zero(map_in):
+    map_out = np.copy(map_in)
+    map_out[map_out==hp.UNSEEN] = 0.
+    return map_out
 
 def get_chi2(obs, randoms, smooth=False, return_pval=False):
     if smooth:
@@ -122,6 +126,9 @@ def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None,
 
 def make_nmtbin_logspaced(nside, lmin, lmax, n_ell_bins, f_ell=None, **kwargs):
     return make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.geomspace, f_ell=f_ell, **kwargs)
+
+def make_nmtbin_linspaced(nside, lmin, lmax, n_ell_bins, f_ell=None, **kwargs):
+    return make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=f_ell, **kwargs)
 
 def load_cosmosis_cl(dir_path, ell_interp=None, starts_at_1=True, imax=10, symmetrize=False):
     offset = int(starts_at_1)

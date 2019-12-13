@@ -1,7 +1,8 @@
 from .observable import *
+from .utils import *
 
 class Shear(Observable):
-    def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', dry_run=False, *args, **kwargs):
         self.obs_name = 'galaxy_shear'
         self.map_names = ['count', 'e1', 'e2']
 
@@ -23,26 +24,21 @@ class Shear(Observable):
         else:
             self.count_cut = 0
 
-        if mode.startswith('buzzard'):
-            self._init_buzzard()
-
-        elif mode=='data_sub' or mode=='mastercat':
-            self._init_data()
-
-        elif mode=='mock':
-            self._init_mock()
-        
-        elif mode=='full':
-            self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'])
-
-        elif mode=='flask':
-            self._init_flask(kwargs['isim'], kwargs['cookie'])
-        
-        elif mode=='psf':
-            pass
-
-        else:
-            raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
+        if not dry_run:
+            if mode.startswith('buzzard'):
+                self._init_buzzard()
+            elif mode=='data_sub' or mode=='mastercat':
+                self._init_data()
+            elif mode=='mock':
+                self._init_mock()
+            elif mode=='full':
+                self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'])
+            elif mode=='flask':
+                self._init_flask(kwargs['isim'], kwargs['cookie'])
+            elif mode=='psf':
+                pass
+            else:
+                raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
@@ -128,7 +124,7 @@ class Shear(Observable):
             cat = self.cats[ibin]
             quantities, count, mask = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
                                                     quantity=[cat[_x] for _x in keys],
-                                                    nside=self.nside, fill_UNSEEN=False, mask=None, weight=None)
+                                                    nside=self.nside, fill_UNSEEN=True, mask=None, weight=None)
             for j, key in enumerate(keys):
                 self.maps[ibin][key] = quantities[j]
 
@@ -158,6 +154,12 @@ class Shear(Observable):
                 self.masks_apo[ibin] *= self.maps[ibin]['count']
 
     def make_fields(self, hm, include_templates=True):
+        if hm.purify_b or hm.purify_e:
+            print("WARNING: E/B-mode purification requires unseen pixels to be set to zero. Replacing...")
+            for ibin in self.zbins:
+                self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
+                self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
+
         for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
             self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
                                         [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
@@ -228,7 +230,7 @@ class Shear(Observable):
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
 
-        field_0 = self.get_field(hm, ibin)
+        # field_0 = self.get_field(hm, ibin)
 
         # wsp = nmt.NmtWorkspace()
         # suffix = '{}_{}_{}_{}'.format(self.obs_name, self.obs_name, ibin, ibin)
@@ -544,9 +546,46 @@ def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
 
     return e1_map, e2_map
 
+def _randrot_maps_fast_sub(args):#, bool_mask, count):
+    cat_e1, cat_e2, ipix, npix = args
+    e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
+
+    e1_map = np.zeros(npix, dtype=float)
+    e2_map = np.zeros(npix, dtype=float)
+
+    np.add.at(e1_map, ipix, e1_rot)
+    np.add.at(e2_map, ipix, e2_rot)
+    
+    return e1_map, e2_map
+
+# @profile
+def _randrot_maps_fast(cat_e1, cat_e2, ipix, npix, bool_mask, count):
+    n = max(1, int(multiprocessing.cpu_count()/2))
+    cat_e1s = np.array_split(cat_e1, n)
+    cat_e2s = np.array_split(cat_e2, n)
+    ipixs = np.array_split(ipix, n)
+
+    iterator = zip(cat_e1s, cat_e2s, ipixs)
+    iterator = [(*plop, npix) for plop in zip(cat_e1s, cat_e2s, ipixs)] #use a generator, so that nothing is computed before it's needed :)
+
+    pool = multiprocessing.Pool(n)
+    res = pool.map(_randrot_maps_fast_sub, iterator, chunksize=1)
+    pool.close()
+    pool.join()
+
+    res = np.array(res)
+    # print(res.shape)
+    e1_map = np.sum(res[:,0], axis=0)
+    e2_map = np.sum(res[:,1], axis=0)
+
+    e1_map[bool_mask] /= count[bool_mask]
+    e2_map[bool_mask] /= count[bool_mask]
+
+    return e1_map, e2_map
+
 # @profile
 def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
-    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
+    e1_map, e2_map = _randrot_maps_fast(cat_e1, cat_e2, ipix, npix, bool_mask, count)
     return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
 # @profile
