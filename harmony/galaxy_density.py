@@ -41,7 +41,7 @@ class Galaxy(Observable):
 
         # which_cat_zbins = [0,0,0,1,2]
 
-        for ibin in tqdm(self.zbins, desc='Galaxy.init_redmagic_Y3'):
+        for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y3'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
             # self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_binary_nside%i.fits'%(self.nside)), verbose=False)
             # comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
@@ -53,7 +53,7 @@ class Galaxy(Observable):
     def init_redmagic_Y1(self, nzbins):
         basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
 
-        for ibin in tqdm(self.zbins, desc='Galaxy.init_redmagic_Y1'):
+        for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y1'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
             self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
             comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRACGOOD_nside{}.fits'.format(self.nside)), verbose=False)
@@ -63,7 +63,7 @@ class Galaxy(Observable):
     def init_BAO_Y1(self, nzbins, use_weights):
         basename = 'DES_Y1A1_LSSBAO_v1.0_MASK_HPIX4096RING'
 
-        for ibin in tqdm(self.zbins, desc='Galaxy.init_BAO_Y1'):
+        for ibin in self.prog(self.zbins, desc='Galaxy.init_BAO_Y1'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
             self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
             comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRAC_nside{}.fits'.format(self.nside)), verbose=False)
@@ -72,7 +72,7 @@ class Galaxy(Observable):
         self.has_weights = use_weights
 
     def init_maglim_Y3(self, nzbins):
-        for ibin in tqdm(self.zbins, desc='Galaxy.init_maglim_Y3'):
+        for ibin in self.prog(self.zbins, desc='Galaxy.init_maglim_Y3'):
             self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'maglim_bin{}.fits'.format(ibin+1)))[1].data
             self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_binary_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
             comp = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_comp_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
@@ -81,7 +81,7 @@ class Galaxy(Observable):
 
 
     # def _init_full(self, dict_zbin_filename, dict_quantity):
-    #     for ibin in tqdm(dict_zbin_filename.keys()):
+    #     for ibin in self.prog(dict_zbin_filename.keys()):
     #         filename = os.path.join(self.data_dir, dict_zbin_filename[ibin])
     #         _cat = fits.open(filename)[1].data
 
@@ -92,7 +92,7 @@ class Galaxy(Observable):
     #         self.cats[ibin] = cat
 
     def make_maps(self, save=True):
-        for ibin in tqdm(self.zbins, desc='Galaxy.make_maps'):
+        for ibin in self.prog(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
             if self.has_weights:
                 count_w, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
@@ -118,7 +118,7 @@ class Galaxy(Observable):
             self.save_maps()
 
     def make_fields(self, hm, include_templates=True):
-        for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+        for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
             self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
 
     def _get_info(self):
@@ -176,7 +176,7 @@ class Galaxy(Observable):
         else:
             random_comp = self.maps[ibin]['completeness']
 
-        for i in trange(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
+        for i in self.prog(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
             #count = np.zeros(npix, dtype=float)
             #ipix_r = random_pos(self.masks[ibin].astype(float), Nobj)
             #np.add.at(count, ipix_r, 1.)

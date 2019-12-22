@@ -14,7 +14,7 @@ import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', **kwargs):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -56,6 +56,8 @@ class Observable(object):
         # self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
         # self.templates_dir = None
 
+        self.prog = prog(verbose)
+
     # def load_catalogs(self):
     #     print('Method load_catalogs not implemented, nothing to do.')
 
@@ -65,14 +67,14 @@ class Observable(object):
     def save_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
         make_directory(maps_dir)
-        for ibin in tqdm(self.zbins, desc='{}.save_maps'.format(self.obs_name)):
+        for ibin in self.prog(self.zbins, desc='{}.save_maps'.format(self.obs_name)):
             hp.write_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, 'mask', self.config.name, self.mode, self.nside, ibin)), self.masks[ibin], overwrite=True)
             for map_name in self.map_names:
                 hp.write_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), self.maps[ibin][map_name], overwrite=True)
 
     def load_maps(self):
         maps_dir = os.path.join(self.config.path_maps, self.name)
-        for ibin in tqdm(self.zbins, desc='{}.load_maps'.format(self.obs_name)):
+        for ibin in self.prog(self.zbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
             self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, 'mask', self.config.name, self.mode, self.nside, ibin)), verbose=False)
             for map_name in self.map_names:
@@ -88,7 +90,7 @@ class Observable(object):
             fig, axes = plt.subplots(nrow,ncol, figsize=(4*ncol,3*nrow))
             axes = np.atleast_2d(axes)
 
-        for i, ibin in tqdm(enumerate(self.zbins), desc='{}.plot_maps'.format(self.obs_name)):
+        for i, ibin in self.prog(enumerate(self.zbins), desc='{}.plot_maps'.format(self.obs_name)):
             for j, map_name in enumerate(self.map_names):
                 if subplots:
                     plt.sca(axes[i,j])
@@ -117,7 +119,7 @@ class Observable(object):
     
     def make_masks_apo(self, hm):
         self.masks_apo = {}
-        for ibin in tqdm(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
+        for ibin in self.prog(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
             # self.masks_apo[ibin] = {}
             # for map_name in self.map_names:
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=hm.aposize, apotype=hm.apotype)
@@ -176,7 +178,7 @@ class Observable(object):
 
         template_names = os.listdir(templates_dir)
         template_names.sort()
-        for filename in tqdm(template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
+        for filename in self.prog(template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
             # try:
                 temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False)
                 self.templates_dir[filename] = temp

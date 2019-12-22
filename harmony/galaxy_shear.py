@@ -1,5 +1,7 @@
 from .observable import *
 from .utils import *
+# import ray
+# ray.init()
 
 class Shear(Observable):
     def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', dry_run=False, *args, **kwargs):
@@ -32,17 +34,19 @@ class Shear(Observable):
             elif mode=='mock':
                 self._init_mock()
             elif mode=='full':
-                self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'])
+                self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('single_file', False), kwargs.get('ext_template', 'zbin_{}'), kwargs.get('ipix_instead_of_radec', False))
+            elif mode=='tables':
+                self._init_tables(kwargs['tables'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('ext_template', 'zbin_{}', kwargs.get('ipix_instead_of_radec', False)))
             elif mode=='flask':
                 self._init_flask(kwargs['isim'], kwargs['cookie'])
-            elif mode=='psf':
+            elif mode=='psf' or 'dry':
                 pass
             else:
                 raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
 
     def _init_buzzard(self):
         # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
-        for ibin in tqdm(self.zbins):
+        for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "Niall_WL_y3_bin_{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -60,7 +64,7 @@ class Shear(Observable):
             self.cats[ibin] = cat
 
     def _init_data(self):
-        for ibin in tqdm(self.zbins):
+        for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -74,7 +78,7 @@ class Shear(Observable):
             self.cats[ibin] = cat
 
     def _init_mock(self):
-        for ibin in tqdm(self.zbins):
+        for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
@@ -87,14 +91,24 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
-    def _init_full(self, filename_template, dict, flip_e2):
-        for ibin in tqdm(self.zbins):
-            filename = os.path.join(self.data_dir, filename_template.format(ibin+1))
-            _cat = fits.open(filename)[1].data
+    def _init_full(self, filename_template, dict, flip_e2, single_file=False, ext_template='zbin_{}', ipix_instead_of_radec=False):
+        if single_file:
+            full_cat = fits.open(os.path.join(self.data_dir, filename_template))
+        if ipix_instead_of_radec:
+            self.ipix = {}
+        for ibin in self.prog(self.zbins):
+            if single_file:
+                _cat = full_cat[ext_template.format(ibin)].data
+            else:
+                filename = os.path.join(self.data_dir, filename_template.format(ibin+1))
+                _cat = fits.open(filename)[1].data
 
             cat = {}
-            cat['ra'] = _cat[dict['ra']]
-            cat['dec'] = _cat[dict['dec']]
+            if ipix_instead_of_radec:
+                self.ipix[ibin] = _cat[dict['ipix']]
+            else:
+                cat['ra'] = _cat[dict['ra']]
+                cat['dec'] = _cat[dict['dec']]
 
             cat['e1'] = _cat[dict['e1']]
             cat['e2'] = _cat[dict['e2']]
@@ -104,8 +118,33 @@ class Shear(Observable):
 
             self.cats[ibin] = cat    
 
+    def _init_tables(self, tables, dict, flip_e2=False, ext_template='zbin_{}', ipix_instead_of_radec=False):
+        is_list = isinstance(tables, list)
+        if ipix_instead_of_radec:
+            self.ipix = {}
+        for i, ibin in self.prog(enumerate(self.zbins)):
+            if is_list:
+                _cat = tables[i]
+            else:
+                _cat = tables[ext_template.format(ibin)]
+
+            cat = {}
+            if ipix_instead_of_radec:
+                self.ipix[ibin] = _cat[dict['ipix']]
+            else:
+                cat['ra'] = _cat[dict['ra']]
+                cat['dec'] = _cat[dict['dec']]
+
+            cat['e1'] = _cat[dict['e1']]
+            cat['e2'] = _cat[dict['e2']]
+
+            if flip_e2:
+                cat['e2'] *= -1.0
+
+            self.cats[ibin] = cat
+
     def _init_flask(self, isim, cookie):
-        for ibin in tqdm(self.zbins):
+        for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
             _cat = fits.open(filename)[1].data
 
@@ -120,11 +159,14 @@ class Shear(Observable):
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
-        for ibin in tqdm(self.zbins, desc='{}.make_maps'.format(self.obs_name)):
+        self.get_ipix()
+        for ibin in self.prog(self.zbins, desc='{}.make_maps'.format(self.obs_name)):
             cat = self.cats[ibin]
-            quantities, count, mask = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
+            quantities, count, mask = ca.cosmo.make_healpix_map(None, None,
                                                     quantity=[cat[_x] for _x in keys],
-                                                    nside=self.nside, fill_UNSEEN=True, mask=None, weight=None)
+                                                    nside=self.nside, fill_UNSEEN=True,
+                                                    mask=None, weight=None,
+                                                    ipix=self.ipix[ibin])
             for j, key in enumerate(keys):
                 self.maps[ibin][key] = quantities[j]
 
@@ -160,7 +202,7 @@ class Shear(Observable):
                 self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
                 self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
 
-        for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+        for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
             self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
                                         [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
                                         templates=self._get_templates_array() if include_templates else None,
@@ -168,9 +210,9 @@ class Shear(Observable):
 
     def make_randomized_fields(self, hm, ibin, nrandom=1):
         bool_mask = (self.maps[ibin]['count'] > 0.)
-        self.compute_ipix()
+        self.get_ipix()
         fields = []
-        for i in trange(nrandom):
+        for i in self.prog(nrandom):
             e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'], self.cats[ibin]['e2'], self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
             field =  nmt.NmtField(self.masks_apo[ibin], [e1_map, e2_map],
                                     templates=None,
@@ -218,11 +260,20 @@ class Shear(Observable):
         return df
 
     def compute_ipix(self): 
+        self.ipix = {}
+        for ibin in self.prog(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
+            cat = self.cats[ibin]
+            self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    
+    def set_ipix(self, ipixs):
+        self.ipix = {}
+        for ibin, ipix in zip(self.zbins, ipixs):
+            self.ipix[ibin] = ipix
+    
+    def get_ipix(self):
         if not hasattr(self, 'ipix'):
-            self.ipix = {}
-            for ibin in tqdm(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
-                cat = self.cats[ibin]
-                self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+            self.compute_ipix()
+        return self.ipix
 
     # @profile
     def _compute_random_auto_cls(self, hm, ibin, nrandom, save_wsp=True):
@@ -247,7 +298,7 @@ class Shear(Observable):
 
         # if nrandom > 0:
         Nobj = len(cat)
-        self.compute_ipix()
+        self.get_ipix()
 
         # count = np.zeros(npix, dtype=float)
         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
@@ -258,13 +309,13 @@ class Shear(Observable):
         _cls = []
 
         if hm.nproc==0:
-            for i in trange(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
+            for i in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
                 _cls.append(_randrot_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
 
         else:
             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
             _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cls, (len(_x), args, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-            for res in tqdm(_multiple_results, desc='{}._compute_random_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+            for res in self.prog(_multiple_results, desc='{}._compute_random_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
                 _cls += res.get()
             print("\n")
 
@@ -340,7 +391,7 @@ class Shear(Observable):
         logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
         template_fields = {}
         wsp_dir  = {}
-        for tempname, temp in tqdm(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
+        for tempname, temp in self.prog(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
             mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
             template_fields[tempname] = nmt.NmtField(mask, [temp])
             wsp_dir[tempname] = nmt.NmtWorkspace()
@@ -352,7 +403,7 @@ class Shear(Observable):
 
         if nrandom > 0:
             Nobj = len(cat)
-            self.compute_ipix()
+            self.get_ipix()
 
             count = np.zeros(npix, dtype=float)
             ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
@@ -361,7 +412,7 @@ class Shear(Observable):
 
             if hm.nproc==0:
                 cls_r = []
-                for i in trange(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
+                for i in self.prog(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
                     cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
                 for tempname in self.templates_dir.keys():
                     hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
@@ -370,7 +421,7 @@ class Shear(Observable):
                 args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
                 _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.templates_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
                 cls_r = []
-                for res in tqdm(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+                for res in self.prog(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
                     cls_r += res.get()
 
                 for tempname in self.templates_dir.keys():
@@ -434,7 +485,7 @@ class Shear(Observable):
 
         logging.info("_compute_cross_PSF_cls: Making template_fields and wsp_dir")
         wsp_dir  = {}
-        for key, psf_field in tqdm(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+        for key, psf_field in self.prog(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
             wsp_dir[key] = nmt.NmtWorkspace()
             wsp_dir[key].compute_coupling_matrix(field_0, psf_field, hm.b)
             hm.cls[(self.obs_name, key)][ibin] = {}
@@ -444,7 +495,7 @@ class Shear(Observable):
 
         if nrandom > 0:
             Nobj = len(cat)
-            self.compute_ipix()
+            self.get_ipix()
 
             count = np.zeros(npix, dtype=float)
             ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
@@ -453,7 +504,7 @@ class Shear(Observable):
 
             if hm.nproc==0:
                 cls_r = []
-                for i in trange(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+                for i in self.prog(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
                     cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.psf_fields, wsp_dir))
                 for key in self.psf_maps.keys():
                     hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
@@ -462,7 +513,7 @@ class Shear(Observable):
                 args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
                 _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_PSF_cls, (len(_x), args, self.psf_maps, self.psf_mask_apo, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
                 cls_r = []
-                for res in tqdm(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+                for res in self.prog(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
                     cls_r += res.get()
 
                 for key in self.psf_maps.keys():
@@ -558,25 +609,61 @@ def _randrot_maps_fast_sub(args):#, bool_mask, count):
     
     return e1_map, e2_map
 
+def _randrot_maps_fast_sub_proc(args, output):
+    res = _randrot_maps_fast_sub(args)
+    output.put(res)
+
+# @ray.remote
+# def _randrot_maps_fast_sub_ray(e12_map, cat_e1, cat_e2, ipix, npix):
+#     e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
+
+#     np.add.at(e12_map[0], ipix, e1_rot)
+#     np.add.at(e12_map[1], ipix, e2_rot)
+
+#     return e12_map
+
 # @profile
 def _randrot_maps_fast(cat_e1, cat_e2, ipix, npix, bool_mask, count):
-    n = max(1, int(multiprocessing.cpu_count()/2))
+    n = max(1, int(multiprocessing.cpu_count()))
     cat_e1s = np.array_split(cat_e1, n)
     cat_e2s = np.array_split(cat_e2, n)
     ipixs = np.array_split(ipix, n)
 
-    iterator = zip(cat_e1s, cat_e2s, ipixs)
-    iterator = [(*plop, npix) for plop in zip(cat_e1s, cat_e2s, ipixs)] #use a generator, so that nothing is computed before it's needed :)
+    # Pool version
+    # pool = multiprocessing.Pool(n)
+    # # iterator = zip(cat_e1s, cat_e2s, ipixs)
+    # iterator = [(*plop, npix) for plop in zip(cat_e1s, cat_e2s, ipixs)] #use a generator, so that nothing is computed before it's needed :)
+    # res = pool.map(_randrot_maps_fast_sub, iterator, chunksize=1)
+    # pool.close()
+    # pool.join()
 
-    pool = multiprocessing.Pool(n)
-    res = pool.map(_randrot_maps_fast_sub, iterator, chunksize=1)
-    pool.close()
-    pool.join()
+    # Process version
+    output = multiprocessing.Queue()
+    processes = [multiprocessing.Process(target=_randrot_maps_fast_sub_proc, args=((*x,npix), output)) for x in zip(cat_e1s, cat_e2s, ipixs)]
+    for p in processes:
+        p.start()
+    res = [output.get() for p in processes]
+    for p in processes:
+        p.join()
 
     res = np.array(res)
     # print(res.shape)
     e1_map = np.sum(res[:,0], axis=0)
     e2_map = np.sum(res[:,1], axis=0)
+
+    # # ray version
+    # n = max(1, int(multiprocessing.cpu_count()*4))
+    # cat_e1s = np.array_split(cat_e1, n)
+    # cat_e2s = np.array_split(cat_e2, n)
+    # ipixs = np.array_split(ipix, n)
+
+    # e12_map = np.zeros((2,npix), dtype=float)
+    # e12_map_id = ray.put(e12_map)
+    # plop = [_randrot_maps_fast_sub_ray.remote(e12_map_id, e1, e2, i, npix) for e1, e2, i in zip(cat_e1s, cat_e2s, ipixs)]
+    # print("plop")
+    # e12_map = ray.get(e12_map_id) #ray.get(plop)
+    # e1_map = e12_map[0]
+    # e2_map = e12_map[1]
 
     e1_map[bool_mask] /= count[bool_mask]
     e2_map[bool_mask] /= count[bool_mask]
@@ -618,7 +705,7 @@ def _multiproc_randrot_cls(nsamples, args, pos):
     wsp.read_from(wsp_filename)
 
     _cls = []
-    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+    for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
         _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
 
     return _cls
@@ -639,7 +726,7 @@ def _multiproc_randrot_cls(nsamples, args, pos):
 #         wsp_dir[key].compute_coupling_matrix(field_0, template_fields[key], b)
 
 #     cls = []
-#     for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+#     for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
 #         cls.append(_randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, template_fields, wsp_dir))
 
 #     return cls
@@ -658,7 +745,7 @@ def _multiproc_randrot_cls(nsamples, args, pos):
 #         wsp_dir[key].compute_coupling_matrix(field_0, psf_fields[key], b)
 
 #     cls = []
-#     for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+#     for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
 #         cls.append(_randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, psf_fields, wsp_dir))
 
 #     return cls

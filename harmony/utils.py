@@ -6,12 +6,34 @@ import numpy as np
 import healpy as hp
 import castor as ca
 import warnings
+from collections.abc import Iterable
+from tqdm.auto import tqdm, trange
 
 try:
     FileNotFoundError
 except NameError:
     #py2
     FileNotFoundError = IOError
+
+def prog(verbose):
+    if verbose:
+        def f(x, *args, **kwargs):
+            if isinstance(x, Iterable):
+                return tqdm(x, *args, **kwargs)
+            elif int(x)==x:
+                return trange(x, *args, **kwargs)
+            else:
+                raise NotImplementedError
+
+    else:
+        def f(x, *args, **kwargs):
+            if isinstance(x, Iterable):
+                return x
+            elif int(x)==x:
+                return range(x)
+            else:
+                raise NotImplementedError
+    return f
 
 def make_directory(directory):
     if not os.path.exists(directory):
