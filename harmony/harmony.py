@@ -16,16 +16,13 @@ import warnings
 import twopoint
 
 class Harmony(object):
-    def __init__(self, config, nside, aposize=2.0, apotype='C1', b=None, nlb=None, nproc=0, load_cls=True, save_cls=True, save_wsp=True, verbose=True, **kwargs):
+    def __init__(self, config, nside, b=None, nlb=None, nproc=0, load_cls=True, save_cls=True, save_wsp=True, verbose=True, **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
 
         self.do_save_cls = save_cls
         self.do_save_wsp = save_wsp
-
-        self.aposize = aposize
-        self.apotype = apotype
 
         self.purify_e = kwargs.get('purify_e', False)
         self.purify_b = kwargs.get('purify_b', False)
@@ -38,10 +35,12 @@ class Harmony(object):
         else:
             self.b = b
             
-        # self.lmax = b.lmax
         self.ell = self.b.get_effective_ells()
+        # self.lmax = b.lmax
         self.cls = {}
         self.cls['ell'] = self.ell
+
+        self.wsp = {}
 
         if load_cls:
             try:
@@ -51,15 +50,21 @@ class Harmony(object):
             else:
                 assert np.allclose(self.ell, self.cls['ell'])
 
-        self.wsp = {}
-
         self.nproc = nproc
         if nproc > 1:
             self.pool = multiprocessing.Pool(nproc)
         
         make_directory(self.config.path_output+'/'+self.name)
 
+        self.verbose = verbose
         self.prog = prog(verbose)
+
+    def init_cls(self):
+        self.cls = {}
+        self.cls['ell'] = self.ell
+
+    def init_wsp(self):
+        self.wsp = {}
 
     @staticmethod
     def get_pairs(obs1, obs2=None, auto_only=False):
@@ -338,33 +343,33 @@ class Harmony(object):
     #                     # self.cls[(obs.obs_name, obs.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
     #                     self.compute_cls(obs, obs, i1, i2, save_cls=save_cls, return_cls=False, check_cls=False, save_wsp=save_wsp)
 
-    def compute_cross_template_cls(self, obs, nrandom, save=True):
-        for tempname in obs.template_dir.keys():
-            key = (obs.obs_name, tempname)
-            if key not in self.cls.keys():
-                self.cls[key] = {}
-            else:
-                print("Replacing cls[%s]".format(str(key)))
+    # def compute_cross_template_cls(self, obs, nrandom, save=True):
+    #     for tempname in obs.template_dir.keys():
+    #         key = (obs.obs_name, tempname)
+    #         if key not in self.cls.keys():
+    #             self.cls[key] = {}
+    #         else:
+    #             print("Replacing cls[%s]".format(str(key)))
 
-        for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
-            obs._compute_cross_template_cls(self, ibin, nrandom=nrandom)
+    #     for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
+    #         obs._compute_cross_template_cls(self, ibin, nrandom=nrandom)
 
-            if save:
-                self.save_cls()
+    #         if save:
+    #             self.save_cls()
 
-    def compute_cross_PSF_cls(self, obs, nrandom, save=True):
-        for tempname in obs.psf_maps.keys():
-            key = (obs.obs_name, tempname)
-            if key not in self.cls.keys():
-                self.cls[key] = {}
-            else:
-                print("Replacing cls[%s]".format(str(key)))
+    # def compute_cross_PSF_cls(self, obs, nrandom, save=True):
+    #     for tempname in obs.psf_maps.keys():
+    #         key = (obs.obs_name, tempname)
+    #         if key not in self.cls.keys():
+    #             self.cls[key] = {}
+    #         else:
+    #             print("Replacing cls[%s]".format(str(key)))
 
-        for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
-            obs._compute_cross_PSF_cls(self, ibin, nrandom=nrandom)
+    #     for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
+    #         obs._compute_cross_PSF_cls(self, ibin, nrandom=nrandom)
 
-            if save:
-                self.save_cls()
+    #         if save:
+    #             self.save_cls()
 
     def bin_cl_theory(self, cl_in, obs1, obs2, i1, i2, fix_pixwin=False):
         bpws = self.get_workspace_bpws(obs1, obs2, i1, i2)

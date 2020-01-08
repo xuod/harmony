@@ -14,11 +14,15 @@ import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, aposize=0.0, apotype='C1', **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
         self.npix = hp.nside2npix(nside)
+
+        # Apodization
+        self.aposize = aposize
+        self.apotype = apotype
 
         self.map_names = map_names
         self.obs_name = obs_name
@@ -56,6 +60,7 @@ class Observable(object):
         # self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
         # self.templates_dir = None
 
+        self.verbose = verbose
         self.prog = prog(verbose)
 
     # def load_catalogs(self):
@@ -117,12 +122,12 @@ class Observable(object):
             plt.savefig(figfile, dpi=300)
             plt.show()
     
-    def make_masks_apo(self, hm):
+    def make_masks_apo(self):
         self.masks_apo = {}
         for ibin in self.prog(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
             # self.masks_apo[ibin] = {}
             # for map_name in self.map_names:
-            self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=hm.aposize, apotype=hm.apotype)
+            self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=self.aposize, apotype=self.apotype)
     
     def make_fields(self, hm, include_templates=True):
         raise NotImplementedError
