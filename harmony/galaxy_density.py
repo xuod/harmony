@@ -79,18 +79,6 @@ class Galaxy(Observable):
             comp[comp == hp.UNSEEN] = 0.0
             self.maps[ibin]['completeness'] = comp
 
-
-    # def _init_full(self, dict_zbin_filename, dict_quantity):
-    #     for ibin in self.prog(dict_zbin_filename.keys()):
-    #         filename = os.path.join(self.data_dir, dict_zbin_filename[ibin])
-    #         _cat = fits.open(filename)[1].data
-
-    #         cat = {}
-    #         cat['ra'] = _cat[dict_quantity['ra']]
-    #         cat['dec'] = _cat[dict_quantity['dec']]
-
-    #         self.cats[ibin] = cat
-
     def make_maps(self, save=True):
         for ibin in self.prog(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
@@ -153,20 +141,13 @@ class Galaxy(Observable):
         df = pd.DataFrame(index=self.zbins, data=info)
         return df
     
-    def _compute_random_auto_cls(self, hm, ibin, nrandom, save_wsp=True, use_completeness=False):
+    def _compute_random_auto_cls(self, hm, ibin, nrandom, use_completeness=False):
         npix = hp.nside2npix(self.nside)
 
         mask_apo = self.masks_apo[ibin]
 
-        wsp = hm.get_workspace(self, self, ibin, ibin, save_wsp=save_wsp) #wsp = nmt.NmtWorkspace()
-        # field_0 = self.get_field(hm, ibin) #nmt.NmtField(mask_apo, [self.maps[ibin]['density']], templates=self.templates, purify_e=hm.purify_e, purify_b=hm.purify_b)
+        wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp) #wsp = nmt.NmtWorkspace()
 
-        # wsp.compute_coupling_matrix(field_0, field_0, hm.b)
-
-        # cls = {}
-        # cls['true'] = compute_master(field_0, field_0, wsp)
-
-        # if nrandom > 0:
         Nobj = len(self.cats[ibin])
 
         _cls = []
@@ -177,15 +158,9 @@ class Galaxy(Observable):
             random_comp = self.maps[ibin]['completeness']
 
         for i in self.prog(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
-            #count = np.zeros(npix, dtype=float)
-            #ipix_r = random_pos(self.masks[ibin].astype(float), Nobj)
-            #np.add.at(count, ipix_r, 1.)
             count = random_count(random_comp, Nobj)
-
             density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=random_comp)
-
             field_r = nmt.NmtField(mask_apo, [density], templates=None, purify_e=hm.purify_e, purify_b=hm.purify_b)
-
             _cls.append(compute_master(field_r, field_r, wsp))
 
         return np.array(_cls)
@@ -202,10 +177,10 @@ class Galaxy(Observable):
             titles[k] = ' [bin %i]'%(i+1)
             ylabels[k] = '$C_\\ell$'
             cls[k] = {}
-            cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['true'][0])
+            cls[k]['data'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][zbin]['data'][0])
             cls_r = hm.cls[(self.obs_name, self.obs_name)][zbin]['random'][:,0,:]
             if remove_Nl:
-                cls[k]['true'] -= np.mean(cls_r, axis=0)
+                cls[k]['data'] -= np.mean(cls_r, axis=0)
             else:
                 cls[k]['random'] = cls_r
 

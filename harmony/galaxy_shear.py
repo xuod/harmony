@@ -170,14 +170,6 @@ class Shear(Observable):
             for j, key in enumerate(keys):
                 self.maps[ibin][key] = quantities[j]
 
-            # self.maps[ibin]['count'] = count
-            # count_cut_mask = (count>self.count_cut).astype(float)
-            # if self.mask_mode == 'binary':
-            #     self.masks[ibin] = mask.astype(float) * count_cut_mask
-            # elif self.mask_mode == 'count':
-            #     self.masks[ibin] = count.astype(float) * count_cut_mask
-            #     # self.masks[ibin][np.logical_not(mask.astype(bool))] = 0.0
-
             # Count cut
             count_cut_mask = (count>self.count_cut)
 
@@ -187,8 +179,8 @@ class Shear(Observable):
         if save:
             self.save_maps()        
 
-    def make_masks_apo(self, hm):
-        super(Shear, self).make_masks_apo(hm)
+    def make_masks_apo(self):
+        super(Shear, self).make_masks_apo()
 
         # Apply inverse-variance weighting after apodization
         if self.mask_mode =='count':
@@ -276,33 +268,18 @@ class Shear(Observable):
         return self.ipix
 
     # @profile
-    def _compute_random_auto_cls(self, hm, ibin, nrandom, save_wsp=True):
+    def _compute_random_auto_cls(self, hm, ibin, nrandom):
         npix = self.npix
         cat = self.cats[ibin]
         mask_apo = self.masks_apo[ibin]
 
-        # field_0 = self.get_field(hm, ibin)
-
-        # wsp = nmt.NmtWorkspace()
-        # suffix = '{}_{}_{}_{}'.format(self.obs_name, self.obs_name, ibin, ibin)
-        # wsp_filename = hm.load_workspace_if_exists(wsp, suffix, return_filename=True)
-        # if not wsp_filename: #load_workspace_if_exists
-        #     wsp.compute_coupling_matrix(field_0, field_0, hm.b)
-        #     if save_workspace:
-        #         wsp_filename = hm.save_workspace(wsp, suffix, return_filename=True)
-        wsp = hm.get_workspace(self, self, ibin, ibin, save_wsp=save_wsp)
+        wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp)
         wsp_filename = hm.get_workspace_filename(self, self, ibin, ibin)
 
-        # cls = {}
-        # cls['true'] = compute_master(field_0, field_0, wsp)
-
-        # if nrandom > 0:
         Nobj = len(cat)
         self.get_ipix()
 
-        # count = np.zeros(npix, dtype=float)
         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-        # np.add.at(count, ipix, 1.)
         count = self.maps[ibin]['count']
         bool_mask = (count > 0.)
 
@@ -344,11 +321,11 @@ class Shear(Observable):
                 else:
                     ylabels[k] = '$C_\\ell$'
                 cls[k] = {}
-                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['true'][idx_EB[j]])
+                cls[k]['data'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['data'][idx_EB[j]])
                 cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['random'][:,idx_EB[j],:])
                 if remove_Nl:
                     clr_r_m = np.mean(cls[k]['random'], axis=0)
-                    cls[k]['true'] -= clr_r_m
+                    cls[k]['data'] -= clr_r_m
                     cls[k]['random'] -= clr_r_m
 
         return self.plot_cls(hm, cls, self.nzbins, 3, figname='auto', titles=titles, ylabels=ylabels, **kwargs)
@@ -370,207 +347,207 @@ class Shear(Observable):
                 else:
                     ylabels[k] = '$C_\\ell ^{\\rm BB}$'
                 cls[k] = {}
-                cls[k]['true'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['true'][3])
+                cls[k]['data'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['data'][3])
                 cls[k]['random'] = np.copy(hm.cls[(self.obs_name, self.obs_name)][(zbin, zbin)]['random'][:,3,:])
                 if remove_Nl:
                     clr_r_m = np.mean(cls[k]['random'], axis=0)
-                    cls[k]['true'] -= clr_r_m
+                    cls[k]['data'] -= clr_r_m
                     cls[k]['random'] -= clr_r_m
 
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, **kwargs)
 
 
-    def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
-        npix = self.npix
-        cat = self.cats[ibin]
-        mask_apo = self.masks_apo[ibin]
+    # def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
+    #     npix = self.npix
+    #     cat = self.cats[ibin]
+    #     mask_apo = self.masks_apo[ibin]
 
-        logging.info("_compute_cross_template_cls: Making field_0")
-        field_0 = self.get_field(hm, ibin, include_templates=False)
+    #     logging.info("_compute_cross_template_cls: Making field_0")
+    #     field_0 = self.get_field(hm, ibin, include_templates=False)
 
-        logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
-        template_fields = {}
-        wsp_dir  = {}
-        for tempname, temp in self.prog(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
-            mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
-            template_fields[tempname] = nmt.NmtField(mask, [temp])
-            wsp_dir[tempname] = nmt.NmtWorkspace()
-            wsp_dir[tempname].compute_coupling_matrix(field_0, template_fields[tempname], hm.b)
-            hm.cls[(self.obs_name, tempname)][ibin] = {}
-            hm.cls[(self.obs_name, tempname)][ibin]['true'] = compute_master(field_0, template_fields[tempname], wsp_dir[tempname])
-            if nrandom > 0:
-                hm.cls[(self.obs_name, tempname)][ibin]['random'] = []
+    #     logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
+    #     template_fields = {}
+    #     wsp_dir  = {}
+    #     for tempname, temp in self.prog(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
+    #         mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
+    #         template_fields[tempname] = nmt.NmtField(mask, [temp])
+    #         wsp_dir[tempname] = nmt.NmtWorkspace()
+    #         wsp_dir[tempname].compute_coupling_matrix(field_0, template_fields[tempname], hm.b)
+    #         hm.cls[(self.obs_name, tempname)][ibin] = {}
+    #         hm.cls[(self.obs_name, tempname)][ibin]['data'] = compute_master(field_0, template_fields[tempname], wsp_dir[tempname])
+    #         if nrandom > 0:
+    #             hm.cls[(self.obs_name, tempname)][ibin]['random'] = []
 
-        if nrandom > 0:
-            Nobj = len(cat)
-            self.get_ipix()
+    #     if nrandom > 0:
+    #         Nobj = len(cat)
+    #         self.get_ipix()
 
-            count = np.zeros(npix, dtype=float)
-            ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-            np.add.at(count, ipix, 1.)
-            bool_mask = (count > 0.)
+    #         count = np.zeros(npix, dtype=float)
+    #         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    #         np.add.at(count, ipix, 1.)
+    #         bool_mask = (count > 0.)
 
-            if hm.nproc==0:
-                cls_r = []
-                for i in self.prog(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
-                    cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
-                for tempname in self.templates_dir.keys():
-                    hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
+    #         if hm.nproc==0:
+    #             cls_r = []
+    #             for i in self.prog(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
+    #                 cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
+    #             for tempname in self.templates_dir.keys():
+    #                 hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
 
-            else:
-                args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
-                _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.templates_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-                cls_r = []
-                for res in self.prog(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-                    cls_r += res.get()
+    #         else:
+    #             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
+    #             _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.templates_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
+    #             cls_r = []
+    #             for res in self.prog(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+    #                 cls_r += res.get()
 
-                for tempname in self.templates_dir.keys():
-                    hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
+    #             for tempname in self.templates_dir.keys():
+    #                 hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
 
-                print("\n")
+    #             print("\n")
 
-    def plot_cross_template_cls(self, hm, showchi2=False, EB=0):
-        ntemp = len(list(self.templates_dir.keys()))
+    # def plot_cross_template_cls(self, hm, showchi2=False, EB=0):
+    #     ntemp = len(list(self.templates_dir.keys()))
 
-        fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
-        ell = hm.b.get_effective_ells()
+    #     fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
+    #     ell = hm.b.get_effective_ells()
 
-        # EB = 0 #0 for E, 1 for B
-        ylabels = ['$\\ell (\\ell+1) C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
-        gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
+    #     # EB = 0 #0 for E, 1 for B
+    #     ylabels = ['$\\ell (\\ell+1) C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
+    #     gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
 
-        factor = ell*(ell+1)
+    #     factor = ell*(ell+1)
 
-        import scipy
+    #     import scipy
 
-        chi2 = {}
-        for i, ibin in enumerate(self.zbins):
-            for ik, key in enumerate(self.templates_dir.keys()):
-                ax = axes[ik, i]
-                ax.axhline(y=0, c='0.8', lw=1)
-                nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
-                for j in range(nrandom):
-                    ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,EB,:], c='r', alpha=max(0.01, 1./nrandom))
-                if showchi2:
-                    _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['true'][EB,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,EB,:])
-                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-                    chi2[(self.obs_name, key,ibin)] = _chi2
-                else:
-                    label = None
-                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][EB,:], label=label, c='b')
-                ax.set_title(gamma_label[EB] + ' [bin %i] $\\times$ '%(ibin+1) + key, fontsize=8)
-                ax.set_xlabel('$\\ell$')
-                ax.set_ylabel(ylabels[EB])
-                ax.set_xlim(0, hm.b.lmax)
-                vmax = max(np.abs(ax.get_ylim()))
-                ax.set_ylim(-vmax,+vmax)
-                if showchi2:
-                    ax.legend(loc=1)
-        plt.tight_layout()
+    #     chi2 = {}
+    #     for i, ibin in enumerate(self.zbins):
+    #         for ik, key in enumerate(self.templates_dir.keys()):
+    #             ax = axes[ik, i]
+    #             ax.axhline(y=0, c='0.8', lw=1)
+    #             nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
+    #             for j in range(nrandom):
+    #                 ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,EB,:], c='r', alpha=max(0.01, 1./nrandom))
+    #             if showchi2:
+    #                 _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['data'][EB,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,EB,:])
+    #                 label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
+    #                 chi2[(self.obs_name, key,ibin)] = _chi2
+    #             else:
+    #                 label = None
+    #             ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['data'][EB,:], label=label, c='b')
+    #             ax.set_title(gamma_label[EB] + ' [bin %i] $\\times$ '%(ibin+1) + key, fontsize=8)
+    #             ax.set_xlabel('$\\ell$')
+    #             ax.set_ylabel(ylabels[EB])
+    #             ax.set_xlim(0, hm.b.lmax)
+    #             vmax = max(np.abs(ax.get_ylim()))
+    #             ax.set_ylim(-vmax,+vmax)
+    #             if showchi2:
+    #                 ax.legend(loc=1)
+    #     plt.tight_layout()
 
-        make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_templates_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-        plt.savefig(figfile, dpi=300)
+    #     make_directory(self.config.path_figures+'/'+self.name)
+    #     figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_templates_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
+    #     plt.savefig(figfile, dpi=300)
 
-        if showchi2:
-            return chi2
+    #     if showchi2:
+    #         return chi2
 
-    def _compute_cross_PSF_cls(self, hm, ibin, nrandom=0, save=True):
-        npix = self.npix
-        cat = self.cats[ibin]
-        mask_apo = self.masks_apo[ibin]
+    # def _compute_cross_PSF_cls(self, hm, ibin, nrandom=0, save=True):
+    #     npix = self.npix
+    #     cat = self.cats[ibin]
+    #     mask_apo = self.masks_apo[ibin]
 
-        logging.info("_compute_cross_PSF_cls: Making field_0")
-        field_0 = self.get_field(hm, ibin, include_templates=False)
+    #     logging.info("_compute_cross_PSF_cls: Making field_0")
+    #     field_0 = self.get_field(hm, ibin, include_templates=False)
 
-        logging.info("_compute_cross_PSF_cls: Making template_fields and wsp_dir")
-        wsp_dir  = {}
-        for key, psf_field in self.prog(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
-            wsp_dir[key] = nmt.NmtWorkspace()
-            wsp_dir[key].compute_coupling_matrix(field_0, psf_field, hm.b)
-            hm.cls[(self.obs_name, key)][ibin] = {}
-            hm.cls[(self.obs_name, key)][ibin]['true'] = compute_master(field_0, psf_field, wsp_dir[key])
-            if nrandom > 0:
-                hm.cls[(self.obs_name, key)][ibin]['random'] = []
+    #     logging.info("_compute_cross_PSF_cls: Making template_fields and wsp_dir")
+    #     wsp_dir  = {}
+    #     for key, psf_field in self.prog(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+    #         wsp_dir[key] = nmt.NmtWorkspace()
+    #         wsp_dir[key].compute_coupling_matrix(field_0, psf_field, hm.b)
+    #         hm.cls[(self.obs_name, key)][ibin] = {}
+    #         hm.cls[(self.obs_name, key)][ibin]['data'] = compute_master(field_0, psf_field, wsp_dir[key])
+    #         if nrandom > 0:
+    #             hm.cls[(self.obs_name, key)][ibin]['random'] = []
 
-        if nrandom > 0:
-            Nobj = len(cat)
-            self.get_ipix()
+    #     if nrandom > 0:
+    #         Nobj = len(cat)
+    #         self.get_ipix()
 
-            count = np.zeros(npix, dtype=float)
-            ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-            np.add.at(count, ipix, 1.)
-            bool_mask = (count > 0.)
+    #         count = np.zeros(npix, dtype=float)
+    #         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    #         np.add.at(count, ipix, 1.)
+    #         bool_mask = (count > 0.)
 
-            if hm.nproc==0:
-                cls_r = []
-                for i in self.prog(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
-                    cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.psf_fields, wsp_dir))
-                for key in self.psf_maps.keys():
-                    hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
+    #         if hm.nproc==0:
+    #             cls_r = []
+    #             for i in self.prog(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
+    #                 cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.psf_fields, wsp_dir))
+    #             for key in self.psf_maps.keys():
+    #                 hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
 
-            else:
-                args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
-                _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_PSF_cls, (len(_x), args, self.psf_maps, self.psf_mask_apo, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-                cls_r = []
-                for res in self.prog(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-                    cls_r += res.get()
+    #         else:
+    #             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
+    #             _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_PSF_cls, (len(_x), args, self.psf_maps, self.psf_mask_apo, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
+    #             cls_r = []
+    #             for res in self.prog(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+    #                 cls_r += res.get()
 
-                for key in self.psf_maps.keys():
-                    hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
+    #             for key in self.psf_maps.keys():
+    #                 hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
 
-                print("\n")
+    #             print("\n")
 
-    def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0, sqrtscale=False):
-        ntemp = len(list(self.psf_maps.keys()))
+    # def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0, sqrtscale=False):
+    #     ntemp = len(list(self.psf_maps.keys()))
 
-        fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
-        ell = hm.b.get_effective_ells()
+    #     fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
+    #     ell = hm.b.get_effective_ells()
 
-        EB = ['E', 'B']
-        ylabel = '$\\ell C_\\ell$' # (\\ell+1)
-        # gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
-        which = np.array([[0,1],[2,3]])
-        title = '$\\gamma_{{\\rm {}}}^{{\\rm gal}} \\ {{\\rm [bin {}]}} \\times \\gamma_{{\\rm {}}}^{{\\rm \\ PSF {}}}$'
+    #     EB = ['E', 'B']
+    #     ylabel = '$\\ell C_\\ell$' # (\\ell+1)
+    #     # gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
+    #     which = np.array([[0,1],[2,3]])
+    #     title = '$\\gamma_{{\\rm {}}}^{{\\rm gal}} \\ {{\\rm [bin {}]}} \\times \\gamma_{{\\rm {}}}^{{\\rm \\ PSF {}}}$'
 
-        which = np.array([[0,1],[2,3]])[EB_shear,EB_psf]
+    #     which = np.array([[0,1],[2,3]])[EB_shear,EB_psf]
 
-        factor = ell #*(ell+1)
+    #     factor = ell #*(ell+1)
 
-        chi2 = {}
-        for i, ibin in enumerate(self.zbins):
-            for ik, key in enumerate(self.psf_maps.keys()):
-                ax = axes[ik, i]
-                ax.axhline(y=0, c='0.8', lw=1)
-                nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
-                for j in range(nrandom):
-                    ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,which,:], c='r', alpha=max(0.01, 1./nrandom))
-                if showchi2:
-                    _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['true'][which,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,which,:])
-                    label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-                    chi2[(self.obs_name, key,ibin)] = _chi2
-                else:
-                    label = None
-                ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['true'][which,:], label=label, c='b')
-                ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
-                ax.set_xlabel('$\\ell$')
-                ax.set_ylabel(ylabel)
-                ax.set_xlim(0, hm.b.lmax)
-                if sqrtscale:
-                    ax.set_xscale('squareroot')
-                    ax.set_xticks(np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))**2)
-                vmax = max(np.abs(ax.get_ylim()))
-                ax.set_ylim(-vmax,+vmax)
-                if showchi2:
-                    ax.legend(loc=1)
-        plt.tight_layout()
+    #     chi2 = {}
+    #     for i, ibin in enumerate(self.zbins):
+    #         for ik, key in enumerate(self.psf_maps.keys()):
+    #             ax = axes[ik, i]
+    #             ax.axhline(y=0, c='0.8', lw=1)
+    #             nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
+    #             for j in range(nrandom):
+    #                 ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,which,:], c='r', alpha=max(0.01, 1./nrandom))
+    #             if showchi2:
+    #                 _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['data'][which,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,which,:])
+    #                 label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
+    #                 chi2[(self.obs_name, key,ibin)] = _chi2
+    #             else:
+    #                 label = None
+    #             ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['data'][which,:], label=label, c='b')
+    #             ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
+    #             ax.set_xlabel('$\\ell$')
+    #             ax.set_ylabel(ylabel)
+    #             ax.set_xlim(0, hm.b.lmax)
+    #             if sqrtscale:
+    #                 ax.set_xscale('squareroot')
+    #                 ax.set_xticks(np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))**2)
+    #             vmax = max(np.abs(ax.get_ylim()))
+    #             ax.set_ylim(-vmax,+vmax)
+    #             if showchi2:
+    #                 ax.legend(loc=1)
+    #     plt.tight_layout()
 
-        make_directory(self.config.path_figures+'/'+self.name)
-        figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_PSF_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-        plt.savefig(figfile, dpi=300)
+    #     make_directory(self.config.path_figures+'/'+self.name)
+    #     figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_PSF_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
+    #     plt.savefig(figfile, dpi=300)
 
-        if showchi2:
-            return chi2
+    #     if showchi2:
+    #         return chi2
 
 
 def apply_random_rotation(e1_in, e2_in):
@@ -705,7 +682,7 @@ def _multiproc_randrot_cls(nsamples, args, pos):
     wsp.read_from(wsp_filename)
 
     _cls = []
-    for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
         _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
 
     return _cls

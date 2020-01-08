@@ -57,8 +57,6 @@ class Observable(object):
         #     self.pool = multiprocessing.Pool(nproc)
 
         self.has_templates = False
-        # self.templates = 12345 # this will cause error if templates is called without the function _get_templates_array first
-        # self.templates_dir = None
 
         self.verbose = verbose
         self.prog = prog(verbose)
@@ -125,8 +123,6 @@ class Observable(object):
     def make_masks_apo(self):
         self.masks_apo = {}
         for ibin in self.prog(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
-            # self.masks_apo[ibin] = {}
-            # for map_name in self.map_names:
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=self.aposize, apotype=self.apotype)
     
     def make_fields(self, hm, include_templates=True):
@@ -179,7 +175,7 @@ class Observable(object):
         self.templates_dir[template_name] =  hp.read_map(template_filename, verbose=False)
 
     def load_all_templates_from_dir(self, templates_dir):
-        self._init_templates()
+        self._check_init_templates()
 
         template_names = os.listdir(templates_dir)
         template_names.sort()
@@ -285,12 +281,12 @@ class Observable(object):
                     for r in range(nrandom):
                         ax.plot(ell, factor*y['random'][r], c='r', alpha=max(0.01, 1./nrandom))
                 if chi2method is not None:
-                    _chi2, _pval = get_chi2(y['true'], y['random'], smooth=(chi2method=='smooth'), return_pval=True)
+                    _chi2, _pval = get_chi2(y['data'], y['random'], smooth=(chi2method=='smooth'), return_pval=True)
                     label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.2g}$)'.format(len(ell), _chi2, _pval)
                     chi2[(i,j)] = _chi2
                 else:
                     label = None
-                ax.plot(ell, factor*y['true'], label=label, c='b' if c is None else c, ls='-' if ls is None else ls)
+                ax.plot(ell, factor*y['data'], label=label, c='b' if c is None else c, ls='-' if ls is None else ls)
                 if titles is not None:
                     ax.set_title(titles[(i,j)], fontsize=8)
                 ax.set_xlabel('$\\ell$')

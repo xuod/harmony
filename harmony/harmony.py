@@ -14,9 +14,10 @@ import numpy as np
 import itertools
 import warnings
 import twopoint
+import numpy as np
 
 class Harmony(object):
-    def __init__(self, config, nside, b=None, nlb=None, nproc=0, load_cls=True, save_cls=True, save_wsp=True, verbose=True, **kwargs):
+    def __init__(self, config, nside, b=None, nlb=None, nproc=0, save_cls=True, save_wsp=True, verbose=True, purify_e=False, purify_b=False):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -24,8 +25,8 @@ class Harmony(object):
         self.do_save_cls = save_cls
         self.do_save_wsp = save_wsp
 
-        self.purify_e = kwargs.get('purify_e', False)
-        self.purify_b = kwargs.get('purify_b', False)
+        self.purify_e = purify_e
+        self.purify_b = purify_b
         self.fields_kw = {'purify_e':self.purify_e, 'purify_b':self.purify_b}
 
         if b is None:
@@ -36,19 +37,7 @@ class Harmony(object):
             self.b = b
             
         self.ell = self.b.get_effective_ells()
-        # self.lmax = b.lmax
-        self.cls = {}
-        self.cls['ell'] = self.ell
-
-        self.wsp = {}
-
-        if load_cls:
-            try:
-                self.load_cls(kwargs.get('print_summary', True))
-            except FileNotFoundError:
-                pass
-            else:
-                assert np.allclose(self.ell, self.cls['ell'])
+        self.clear_cls_wsp()
 
         self.nproc = nproc
         if nproc > 1:
@@ -59,11 +48,9 @@ class Harmony(object):
         self.verbose = verbose
         self.prog = prog(verbose)
 
-    def init_cls(self):
+    def clear_cls_wsp(self):
         self.cls = {}
         self.cls['ell'] = self.ell
-
-    def init_wsp(self):
         self.wsp = {}
 
     @staticmethod
@@ -86,22 +73,12 @@ class Harmony(object):
         
         return pairs
 
-    def check_update_cls(self, obs1, obs2):
+    def check_obs(self, obs1, obs2):
         key = (obs1.obs_name, obs2.obs_name)
         if key not in self.cls.keys():
             self.cls[key] = {}
-            # if i1 is not None:
-            #     assert i2 is not None
-            #     self.cls[key][(i1,i2)] = {}
-        else:
-            #print("Replacing cls[%s]".format(str(key)))
-            pass
-        
         if key not in self.wsp.keys():
-            self.wsp[key] = {}
-        else:
-            #print("Replacing wsp[%s]".format(str(key)))
-            pass
+            self.wsp[key] = {}            
     
     def get_workspace_filename(self, obs1, obs2, i1, i2):
         if isinstance(obs1, Observable) and isinstance(obs2, Observable):
@@ -113,16 +90,17 @@ class Harmony(object):
         filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.bin'.format(self.config.name, self.nside, suffix))
         return filename
 
-    def load_workspace(self, obs1, obs2, i1, i2, return_wsp=True):
+    def load_workspace(self, obs1, obs2, i1, i2):
         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
-        self.check_update_cls(obs1, obs2)
+        self.check_obs(obs1, obs2)
+
         if os.path.isfile(filename):
             wsp = nmt.NmtWorkspace()
             wsp.read_from(filename)
             self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = wsp
             return wsp
         else:
-            raise RuntimeError("Workspace file does not exist.")
+            raise RuntimeError("Workspace file does not exist: ", filename)
 
     def load_workspace_bpws(self, obs1, obs2, i1, i2):
         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
@@ -130,23 +108,26 @@ class Harmony(object):
 
         if os.path.isfile(filename_bpws):
             bpws = np.load(filename_bpws)
-        # elif os.path.isfile(filename):
-        #     wsp = nmt.NmtWorkspace()
-        #     wsp.read_from(filename)
-        #     bpws = wsp.get_bandpower_windows()
+            return bpws
         else:
-            raise RuntimeError("Workspace file does not exist.")
+            raise RuntimeError("Workspace file does not exist: ", filename_bpws)
+
+    def load_all_workspaces(self, obs1, obs2=None):
+        pairs = self.get_pairs(obs1, obs2=obs2)
+        if obs2 is None:
+            obs2 = obs1
+
+        for i1,i2 in self.prog(pairs, desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+            self.load_workspace(obs1, obs2, i1, i2)
         
-        return bpws
-    
     def _save_workspace(self, wsp, obs1, obs2, i1, i2, bpws_only=False):
         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
         np.save(filename[:-4]+'_bpws.npy', wsp.get_bandpower_windows())
         if not bpws_only:
             wsp.write_to(filename)
 
-    def prepare_workspace(self, obs1, obs2, i1, i2, save_wsp=None, return_wsp=True):
-        assert isinstance(save_wsp or self.do_save_wsp, bool) or save_wsp=='bpws_only'
+    def prepare_workspace(self, obs1, obs2, i1, i2):
+        self.check_obs(obs1, obs2)
 
         field1 = obs1.get_field(self, i1)
         field2 = obs2.get_field(self, i2)
@@ -156,59 +137,75 @@ class Harmony(object):
 
         self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = wsp
 
-        if save_wsp or self.do_save_wsp:
-            self._save_workspace(wsp, obs1, obs2, i1, i2, bpws_only=(save_wsp=='bpws_only'))
+        if self.do_save_wsp:
+            self._save_workspace(wsp, obs1, obs2, i1, i2, bpws_only=(self.do_save_wsp=='bpws_only'))
         
-        if return_wsp:
-            return wsp
+        return wsp
     
-    def prepare_all_workspaces(self, obs1, obs2=None, save_wsp=None):
+    def prepare_all_workspaces(self, obs1, obs2=None):
+        pairs = self.get_pairs(obs1, obs2=obs2)
         if obs2 is None:
             obs2 = obs1
-        pairs = self.get_pairs(obs1, obs2=None)
 
-        self.check_update_cls(obs1, obs2)
- 
         for i1,i2 in self.prog(pairs, desc='Harmony.prepare_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
-            self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp, return_wsp=False)
-    
-    def get_all_workspaces(self, obs1, obs2=None, save_wsp=None):
-        if obs2 is None:
-            obs2 = obs1
-        pairs = self.get_pairs(obs1, obs2=None)
+            # self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.prepare_workspace(obs1, obs2, i1, i2)
+            self.prepare_workspace(obs1, obs2, i1, i2)
 
-        self.check_update_cls(obs1, obs2)
- 
-        for i1,i2 in self.prog(pairs, desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
-            self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
-
-    def get_workspace(self, obs1, obs2, i1, i2, save_wsp=None):
+    def get_workspace(self, obs1, obs2, i1, i2):
         if isinstance(obs1, Observable):
             obs1_name = obs1.obs_name
             obs2_name = obs2.obs_name
         else:
             obs1_name = obs1
             obs2_name = obs2
-        try:
-            return self.wsp[(obs1_name, obs2_name)][(i1,i2)]
-        except KeyError:
-            filename = self.get_workspace_filename(obs1, obs2, i1, i2)
-            try:
-                wsp = self.load_workspace(obs1, obs2, i1, i2, return_wsp=True)
-            except RuntimeError:
-                wsp = self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp, return_wsp=True)
-            return wsp
 
-    def get_workspace_bpws(self, obs1, obs2, i1, i2, save_wsp=None):
+        wsp = self.wsp[(obs1_name, obs2_name)][(i1,i2)]
+
+        if wsp is not None:
+            return wsp
+        else:
+            raise KeyError
+
+    def get_or_prepare_workspace(self, obs1, obs2, i1, i2):
         try:
+            return self.get_workspace(obs1, obs2, i1, i2)
+        except:
+            return self.prepare_workspace(obs1, obs2, i1, i2)
+
+    def get_workspace_bpws(self, obs1, obs2, i1, i2):
+        try:
+            wsp = self.get_workspace(obs1, obs2, i1, i2)
+            return wsp.get_bandpower_windows()
+        except KeyError:
             bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
             return bpws
-        except RuntimeError:
-            try:
-                wsp = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
-                return wsp.get_bandpower_windows()
-            except:
-                raise RuntimeError("Couldn't load or prepare bpws.")
+
+    # def get_all_workspaces(self, obs1, obs2=None, save_wsp=None):
+    #     if obs2 is None:
+    #         obs2 = obs1
+    #     pairs = self.get_pairs(obs1, obs2=None)
+
+    #     self.check_update_cls(obs1, obs2)
+ 
+    #     for i1,i2 in self.prog(pairs, desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+    #         self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
+
+    # def get_workspace(self, obs1, obs2, i1, i2, save_wsp=None):
+    #     if isinstance(obs1, Observable):
+    #         obs1_name = obs1.obs_name
+    #         obs2_name = obs2.obs_name
+    #     else:
+    #         obs1_name = obs1
+    #         obs2_name = obs2
+    #     try:
+    #         return self.wsp[(obs1_name, obs2_name)][(i1,i2)]
+    #     except KeyError:
+    #         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
+    #         try:
+    #             wsp = self.load_workspace(obs1, obs2, i1, i2)
+    #         except RuntimeError:
+    #             wsp = self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
+    #         return wsp
 
     def save_cls(self):
         make_directory(self.config.path_output+'/'+self.name)
@@ -218,6 +215,8 @@ class Harmony(object):
     def load_cls(self, print_summary=True):
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
         self.cls = pickle.load(open(filename, mode='rb'))
+
+        assert np.allclose(self.ell, self.cls['ell'])
 
         if print_summary:
             print("Loaded Cl's info:")
@@ -229,67 +228,58 @@ class Harmony(object):
                         print("     - Redshift bins", bin_key)
                         for tr_key, cl in self.cls[obs_key][bin_key].items():
                             print("          -", tr_key, cl.shape)
+        return self.cls
 
-    def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None, return_cls=True, check_cls=True, save_wsp=None):
+    def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None):
         if obs2 is None:
             same_obs = True
             obs2 = obs1
         if i2 is None:
             i2=i1
 
-        if check_cls:
-            self.check_update_cls(obs1, obs2)
+        self.check_obs(obs1, obs2)
 
         field1 = obs1.get_field(self, i1)
         field2 = obs2.get_field(self, i2)
 
-        wsp = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
+        wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
 
         _cls = compute_master(field1, field2, wsp)
 
         if (i1, i2) not in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
             self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = {}
 
-        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['true'] = _cls
+        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['data'] = _cls
 
         if save_cls or self.do_save_cls:
             self.save_cls()
         
-        if return_cls:
-            return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
+        return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
 
-    def compute_all_cls(self, obs1, obs2=None, save_cls=None, save_wsp=None, auto_only=False):
+    def compute_all_cls(self, obs1, obs2=None, save_cls=None, auto_only=False):
+        pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
         if obs2 is None:
             obs2 = obs1
-        pairs = self.get_pairs(obs1, obs2=None, auto_only=auto_only)
-
-        self.check_update_cls(obs1, obs2)
 
         for i1,i2 in self.prog(pairs, desc='Harmony.compute_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
-            # if (i2,i1) in self.cls[(obs1.obs_name, obs2.obs_name)].keys() and same_obs:
-            #     # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
-            #     # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
-            #     continue
-            # else:
-            self.compute_cls(obs1=obs1, i1=i1, obs2=obs2, i2=i2, save_cls=save_cls, return_cls=False, save_wsp=save_wsp)
+            self.compute_cls(obs1=obs1, i1=i1, obs2=obs2, i2=i2, save_cls=save_cls)
 
-    def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None, save_wsp=None):
+    def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None):
         if ibins is None:
             ibins = obs.zbins
         else:
             ibins = np.array(ibins)
         for ibin in self.prog(ibins, desc='Harmony.compute_random_auto_cls [obs:{}]'.format(obs.obs_name)):
-            clr = obs._compute_random_auto_cls(self, ibin, nrandom, save_wsp=save_wsp)
+            clr = obs._compute_random_auto_cls(self, ibin, nrandom)
             if 'random' in self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)].keys():
                 # print("Adding to existing randoms.", self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'].shape, clr.shape)
                 self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = np.concatenate([self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'], clr])
-                # print(self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'].shape)
             else:
                 self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = clr
             if save_cls or self.do_save_cls:
                 self.save_cls()
 
-    def compute_full_auto_cls(self, obs, nrandom=0, from_scratch=False, save_cls=None, save_wsp=None, save_maps=True, plot_maps=False):
+    def compute_full_auto_cls(self, obs, nrandom=0, from_scratch=False, save_cls=None, save_maps=True, plot_maps=False):
         if from_scratch:
             self.cls = {}
             self.cls['ell'] = self.ell
@@ -304,17 +294,15 @@ class Harmony(object):
         if plot_maps:
             obs.plot_maps()
 
-        obs.make_masks_apo(self)
+        obs.make_masks_apo()
         obs.make_fields(self)
 
-        if from_scratch:
-            self.prepare_all_workspaces(obs, save_wsp=save_wsp)
-        else:
-            self.get_all_workspaces(obs, save_wsp=save_wsp)
+        if from_scratch: # otherwise wsp are loaded when computing cls.
+            self.prepare_all_workspaces(obs)
 
-        self.compute_all_cls(obs, save_cls=save_cls, save_wsp=save_wsp)
+        self.compute_all_cls(obs, save_cls=save_cls)
         if nrandom>0:
-            self.compute_random_auto_cls(obs, nrandom=nrandom, save_cls=save_cls, save_wsp=save_wsp)
+            self.compute_random_auto_cls(obs, nrandom=nrandom, save_cls=save_cls)
 
     # def compute_all_auto_cls(self, obs, nrandom=0, save_cls=True, save_wsp=True):
     #     self.check_update_cls(obs, obs)
@@ -406,9 +394,9 @@ class Harmony(object):
         angbin = []
         value = []
         for (i1,i2), C_ell in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
-            cl_temp = C_ell['true'][spin_idx]
+            cl_temp = C_ell['data'][spin_idx]
             if 'random' in C_ell.keys():
-                cl_temp -= np.mean(C_ell['true'][:,spin_idx], axis=0)
+                cl_temp -= np.mean(C_ell['data'][:,spin_idx], axis=0)
             n = len(C_ell)
             bins1 += [i1+1]*n
             bins2 += [i2+1]*n
@@ -417,7 +405,7 @@ class Harmony(object):
 
         spec = twopoint.SpectrumMeasurement(name=name,bins=(np.array(bins1),np.array(bins2)),
                 types=types, kernels=kernels, windows='SAMPLE',
-                angular_bin=np.array(angbin), value=np.arary(value))
+                angular_bin=np.array(angbin), value=np.array(value))
             
         spec.reorder_canonical()
 
@@ -428,14 +416,12 @@ class Harmony(object):
         return spec
 
     def get_cl(self, obs1, obs2, i1, i2, debias=True):
-        out = np.copy(self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['true'])
+        out = np.copy(self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['data'])
         if obs1==obs2 and i1==i2 and debias:
             out -= np.mean(self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'], axis=0)            
         return out
 
     def _compute_gaussian_covariance_block(self, obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=True):
-        # warnings.warn("compute_gaussian_covariance is not implemented yet, only returns an array of zeros.")
-        # return np.zeros(self.b.get_n_bands(),self.b.get_n_bands())
 
         def spin_help(obs1, obs2):
             return max(1,obs1.spin)*max(1,obs2.spin)
