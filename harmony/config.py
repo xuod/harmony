@@ -6,6 +6,7 @@ class Config(object):
             self.path_maps = all_paths
             self.path_figures = all_paths
             self.path_output = all_paths
-        self.path_maps = path_maps
-        self.path_figures = path_figures
-        self.path_output = path_output
+        else:
+            self.path_maps = path_maps
+            self.path_figures = path_figures
+            self.path_output = path_output

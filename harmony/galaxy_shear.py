@@ -1,7 +1,10 @@
 from .observable import *
 from .utils import *
-# import ray
-# ray.init()
+import sys
+import numba
+import random
+
+TWOPI = 2. * np.pi
 
 class Shear(Observable):
     def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', dry_run=False, *args, **kwargs):
@@ -193,22 +196,34 @@ class Shear(Observable):
             for ibin in self.zbins:
                 self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
                 self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
+        
+        templates = self._get_templates_array() if include_templates else None
 
         for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
             self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
-                                        [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                                        templates=self._get_templates_array() if include_templates else None,
-                                        **hm.fields_kw)
+                                             [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
+                                             templates=templates,
+                                             **hm.fields_kw)
 
-    def make_randomized_fields(self, hm, ibin, nrandom=1):
+    def make_randomized_fields(self, hm, ibin, nrandom=1, include_templates=True):
         bool_mask = (self.maps[ibin]['count'] > 0.)
         self.get_ipix()
         fields = []
-        for i in self.prog(nrandom):
-            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'], self.cats[ibin]['e2'], self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
-            field =  nmt.NmtField(self.masks_apo[ibin], [e1_map, e2_map],
-                                    templates=None,
-                                    **hm.fields_kw)
+
+        templates = self._get_templates_array() if include_templates else None
+
+        # remove progress bar for only one field
+        if nrandom == 1:
+            prog = [0]
+        else:
+            prog = self.prog(nrandom)
+
+        for _ in prog:
+            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
+            field =  nmt.NmtField(self.masks_apo[ibin],
+                                  [e1_map, e2_map],
+                                  templates=templates,
+                                  **hm.fields_kw)
             fields.append(field)
 
         return fields
@@ -276,7 +291,7 @@ class Shear(Observable):
         wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp)
         wsp_filename = hm.get_workspace_filename(self, self, ibin, ibin)
 
-        Nobj = len(cat)
+        # Nobj = len(cat)
         self.get_ipix()
 
         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
@@ -286,8 +301,8 @@ class Shear(Observable):
         _cls = []
 
         if hm.nproc==0:
-            for i in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
-                _cls.append(_randrot_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
+            for _ in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
+                _cls.append(_randrot_cls(cat['e1'].astype(float), cat['e2'].astype(float), ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
 
         else:
             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
@@ -357,322 +372,36 @@ class Shear(Observable):
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, **kwargs)
 
 
-    # def _compute_cross_template_cls(self, hm, ibin, nrandom=0, save=True):
-    #     npix = self.npix
-    #     cat = self.cats[ibin]
-    #     mask_apo = self.masks_apo[ibin]
-
-    #     logging.info("_compute_cross_template_cls: Making field_0")
-    #     field_0 = self.get_field(hm, ibin, include_templates=False)
-
-    #     logging.info("_compute_cross_template_cls: Making template_fields and wsp_dir")
-    #     template_fields = {}
-    #     wsp_dir  = {}
-    #     for tempname, temp in self.prog(self.templates_dir.items(), desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
-    #         mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
-    #         template_fields[tempname] = nmt.NmtField(mask, [temp])
-    #         wsp_dir[tempname] = nmt.NmtWorkspace()
-    #         wsp_dir[tempname].compute_coupling_matrix(field_0, template_fields[tempname], hm.b)
-    #         hm.cls[(self.obs_name, tempname)][ibin] = {}
-    #         hm.cls[(self.obs_name, tempname)][ibin]['data'] = compute_master(field_0, template_fields[tempname], wsp_dir[tempname])
-    #         if nrandom > 0:
-    #             hm.cls[(self.obs_name, tempname)][ibin]['random'] = []
-
-    #     if nrandom > 0:
-    #         Nobj = len(cat)
-    #         self.get_ipix()
-
-    #         count = np.zeros(npix, dtype=float)
-    #         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-    #         np.add.at(count, ipix, 1.)
-    #         bool_mask = (count > 0.)
-
-    #         if hm.nproc==0:
-    #             cls_r = []
-    #             for i in self.prog(nrandom, desc='{}.compute_cross_template_cls [bin {}]'.format(self.obs_name, ibin)):
-    #                 cls_r.append(_randrot_cross_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, template_fields, wsp_dir))
-    #             for tempname in self.templates_dir.keys():
-    #                 hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
-
-    #         else:
-    #             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
-    #             _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_cls, (len(_x), args, self.templates_dir, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-    #             cls_r = []
-    #             for res in self.prog(_multiple_results, desc='{}.compute_cross_template_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-    #                 cls_r += res.get()
-
-    #             for tempname in self.templates_dir.keys():
-    #                 hm.cls[(self.obs_name, tempname)][ibin]['random'] = np.array([_x[tempname] for _x in cls_r])
-
-    #             print("\n")
-
-    # def plot_cross_template_cls(self, hm, showchi2=False, EB=0):
-    #     ntemp = len(list(self.templates_dir.keys()))
-
-    #     fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
-    #     ell = hm.b.get_effective_ells()
-
-    #     # EB = 0 #0 for E, 1 for B
-    #     ylabels = ['$\\ell (\\ell+1) C_\\ell^{{\\rm syst} \\times \\gamma_{\\rm %s}}$'%s for s in ['E', 'B']]
-    #     gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
-
-    #     factor = ell*(ell+1)
-
-    #     import scipy
-
-    #     chi2 = {}
-    #     for i, ibin in enumerate(self.zbins):
-    #         for ik, key in enumerate(self.templates_dir.keys()):
-    #             ax = axes[ik, i]
-    #             ax.axhline(y=0, c='0.8', lw=1)
-    #             nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
-    #             for j in range(nrandom):
-    #                 ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,EB,:], c='r', alpha=max(0.01, 1./nrandom))
-    #             if showchi2:
-    #                 _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['data'][EB,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,EB,:])
-    #                 label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-    #                 chi2[(self.obs_name, key,ibin)] = _chi2
-    #             else:
-    #                 label = None
-    #             ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['data'][EB,:], label=label, c='b')
-    #             ax.set_title(gamma_label[EB] + ' [bin %i] $\\times$ '%(ibin+1) + key, fontsize=8)
-    #             ax.set_xlabel('$\\ell$')
-    #             ax.set_ylabel(ylabels[EB])
-    #             ax.set_xlim(0, hm.b.lmax)
-    #             vmax = max(np.abs(ax.get_ylim()))
-    #             ax.set_ylim(-vmax,+vmax)
-    #             if showchi2:
-    #                 ax.legend(loc=1)
-    #     plt.tight_layout()
-
-    #     make_directory(self.config.path_figures+'/'+self.name)
-    #     figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_templates_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-    #     plt.savefig(figfile, dpi=300)
-
-    #     if showchi2:
-    #         return chi2
-
-    # def _compute_cross_PSF_cls(self, hm, ibin, nrandom=0, save=True):
-    #     npix = self.npix
-    #     cat = self.cats[ibin]
-    #     mask_apo = self.masks_apo[ibin]
-
-    #     logging.info("_compute_cross_PSF_cls: Making field_0")
-    #     field_0 = self.get_field(hm, ibin, include_templates=False)
-
-    #     logging.info("_compute_cross_PSF_cls: Making template_fields and wsp_dir")
-    #     wsp_dir  = {}
-    #     for key, psf_field in self.prog(self.psf_fields.items(), desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
-    #         wsp_dir[key] = nmt.NmtWorkspace()
-    #         wsp_dir[key].compute_coupling_matrix(field_0, psf_field, hm.b)
-    #         hm.cls[(self.obs_name, key)][ibin] = {}
-    #         hm.cls[(self.obs_name, key)][ibin]['data'] = compute_master(field_0, psf_field, wsp_dir[key])
-    #         if nrandom > 0:
-    #             hm.cls[(self.obs_name, key)][ibin]['random'] = []
-
-    #     if nrandom > 0:
-    #         Nobj = len(cat)
-    #         self.get_ipix()
-
-    #         count = np.zeros(npix, dtype=float)
-    #         ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-    #         np.add.at(count, ipix, 1.)
-    #         bool_mask = (count > 0.)
-
-    #         if hm.nproc==0:
-    #             cls_r = []
-    #             for i in self.prog(nrandom, desc='{}._compute_cross_PSF_cls [bin {}]'.format(self.obs_name, ibin)):
-    #                 cls_r.append(_randrot_cross_PSF_cls(cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.psf_fields, wsp_dir))
-    #             for key in self.psf_maps.keys():
-    #                 hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
-
-    #         else:
-    #             args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, self.nside, hm.lmax, hm.nlb)
-    #             _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cross_PSF_cls, (len(_x), args, self.psf_maps, self.psf_mask_apo, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-    #             cls_r = []
-    #             for res in self.prog(_multiple_results, desc='{}._compute_cross_PSF_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-    #                 cls_r += res.get()
-
-    #             for key in self.psf_maps.keys():
-    #                 hm.cls[(self.obs_name, key)][ibin]['random'] = np.array([_x[key] for _x in cls_r])
-
-    #             print("\n")
-
-    # def plot_cross_PSF_cls(self, hm, showchi2=False, EB_shear=0, EB_psf=0, sqrtscale=False):
-    #     ntemp = len(list(self.psf_maps.keys()))
-
-    #     fig, axes = plt.subplots(ntemp, self.nzbins, figsize=(4*self.nzbins, 3*ntemp))
-    #     ell = hm.b.get_effective_ells()
-
-    #     EB = ['E', 'B']
-    #     ylabel = '$\\ell C_\\ell$' # (\\ell+1)
-    #     # gamma_label = ['$\\gamma_{\\rm %s}$'%s for s in ['E', 'B']]
-    #     which = np.array([[0,1],[2,3]])
-    #     title = '$\\gamma_{{\\rm {}}}^{{\\rm gal}} \\ {{\\rm [bin {}]}} \\times \\gamma_{{\\rm {}}}^{{\\rm \\ PSF {}}}$'
-
-    #     which = np.array([[0,1],[2,3]])[EB_shear,EB_psf]
-
-    #     factor = ell #*(ell+1)
-
-    #     chi2 = {}
-    #     for i, ibin in enumerate(self.zbins):
-    #         for ik, key in enumerate(self.psf_maps.keys()):
-    #             ax = axes[ik, i]
-    #             ax.axhline(y=0, c='0.8', lw=1)
-    #             nrandom = hm.cls[(self.obs_name, key)][ibin]['random'].shape[0]
-    #             for j in range(nrandom):
-    #                 ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['random'][j,which,:], c='r', alpha=max(0.01, 1./nrandom))
-    #             if showchi2:
-    #                 _chi2 = get_chi2_smoothcov(hm.cls[(self.obs_name, key)][ibin]['data'][which,:], hm.cls[(self.obs_name, key)][ibin]['random'][:,which,:])
-    #                 label = '$\\chi^2_{{{:}}} = {:.2f}$ ($p={:.1e}$)'.format(len(ell), _chi2, scipy.stats.chi2.sf(_chi2, df=hm.b.get_n_bands()))
-    #                 chi2[(self.obs_name, key,ibin)] = _chi2
-    #             else:
-    #                 label = None
-    #             ax.plot(ell, factor*hm.cls[(self.obs_name, key)][ibin]['data'][which,:], label=label, c='b')
-    #             ax.set_title(title.format(EB[EB_shear], ibin+1, EB[EB_psf], key), fontsize=12)
-    #             ax.set_xlabel('$\\ell$')
-    #             ax.set_ylabel(ylabel)
-    #             ax.set_xlim(0, hm.b.lmax)
-    #             if sqrtscale:
-    #                 ax.set_xscale('squareroot')
-    #                 ax.set_xticks(np.arange(0,np.sqrt(hm.b.lmax), np.ceil(np.sqrt(hm.b.lmax)/5.))**2)
-    #             vmax = max(np.abs(ax.get_ylim()))
-    #             ax.set_ylim(-vmax,+vmax)
-    #             if showchi2:
-    #                 ax.legend(loc=1)
-    #     plt.tight_layout()
-
-    #     make_directory(self.config.path_figures+'/'+self.name)
-    #     figfile = os.path.join(self.config.path_figures, self.name, 'cls_cross_PSF_{}_{}_{}_nside{}.png'.format(self.obs_name, self.config.name, self.mode, self.nside))
-    #     plt.savefig(figfile, dpi=300)
-
-    #     if showchi2:
-    #         return chi2
-
-
-def apply_random_rotation(e1_in, e2_in):
-    np.random.seed() # CRITICAL in multiple processes !
-    rot_angle = np.random.rand(len(e1_in))*2*np.pi #no need for 2?
-    cos = np.cos(rot_angle)
-    sin = np.sin(rot_angle)
-    e1_out = + e1_in * cos + e2_in * sin
-    e2_out = - e1_in * sin + e2_in * cos
-    return e1_out, e2_out
-
-# @profile
-def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
-    e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
-
-    e1_map = np.zeros(npix, dtype=float)
-    e2_map = np.zeros(npix, dtype=float)
-
-    np.add.at(e1_map, ipix, e1_rot)
-    np.add.at(e2_map, ipix, e2_rot)
-
-    e1_map[bool_mask] /= count[bool_mask]
-    e2_map[bool_mask] /= count[bool_mask]
-
-    return e1_map, e2_map
-
-def _randrot_maps_fast_sub(args):#, bool_mask, count):
-    cat_e1, cat_e2, ipix, npix = args
-    e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
-
-    e1_map = np.zeros(npix, dtype=float)
-    e2_map = np.zeros(npix, dtype=float)
-
-    np.add.at(e1_map, ipix, e1_rot)
-    np.add.at(e2_map, ipix, e2_rot)
+@numba.jit(nopython=True, parallel=True)
+def _randrot_maps_sub(cat_e1, cat_e2, ipix, npix):
+    n = len(cat_e1)
+    e1_map = np.zeros(npix)
+    e2_map = np.zeros(npix)
+    for i in numba.prange(n):
+        rot_angle = random.random() * TWOPI
+        cos = np.cos(rot_angle)
+        sin = np.sin(rot_angle)
+        e1_map[ipix[i]] += + cat_e1[i] * cos + cat_e2[i] * sin
+        e2_map[ipix[i]] += - cat_e1[i] * sin + cat_e2[i] * cos
     
     return e1_map, e2_map
 
-def _randrot_maps_fast_sub_proc(args, output):
-    res = _randrot_maps_fast_sub(args)
-    output.put(res)
-
-# @ray.remote
-# def _randrot_maps_fast_sub_ray(e12_map, cat_e1, cat_e2, ipix, npix):
-#     e1_rot, e2_rot = apply_random_rotation(cat_e1, cat_e2)
-
-#     np.add.at(e12_map[0], ipix, e1_rot)
-#     np.add.at(e12_map[1], ipix, e2_rot)
-
-#     return e12_map
-
-# @profile
-def _randrot_maps_fast(cat_e1, cat_e2, ipix, npix, bool_mask, count):
-    n = max(1, int(multiprocessing.cpu_count()))
-    cat_e1s = np.array_split(cat_e1, n)
-    cat_e2s = np.array_split(cat_e2, n)
-    ipixs = np.array_split(ipix, n)
-
-    # Pool version
-    # pool = multiprocessing.Pool(n)
-    # # iterator = zip(cat_e1s, cat_e2s, ipixs)
-    # iterator = [(*plop, npix) for plop in zip(cat_e1s, cat_e2s, ipixs)] #use a generator, so that nothing is computed before it's needed :)
-    # res = pool.map(_randrot_maps_fast_sub, iterator, chunksize=1)
-    # pool.close()
-    # pool.join()
-
-    # Process version
-    output = multiprocessing.Queue()
-    processes = [multiprocessing.Process(target=_randrot_maps_fast_sub_proc, args=((*x,npix), output)) for x in zip(cat_e1s, cat_e2s, ipixs)]
-    for p in processes:
-        p.start()
-    res = [output.get() for p in processes]
-    for p in processes:
-        p.join()
-
-    res = np.array(res)
-    # print(res.shape)
-    e1_map = np.sum(res[:,0], axis=0)
-    e2_map = np.sum(res[:,1], axis=0)
-
-    # # ray version
-    # n = max(1, int(multiprocessing.cpu_count()*4))
-    # cat_e1s = np.array_split(cat_e1, n)
-    # cat_e2s = np.array_split(cat_e2, n)
-    # ipixs = np.array_split(ipix, n)
-
-    # e12_map = np.zeros((2,npix), dtype=float)
-    # e12_map_id = ray.put(e12_map)
-    # plop = [_randrot_maps_fast_sub_ray.remote(e12_map_id, e1, e2, i, npix) for e1, e2, i in zip(cat_e1s, cat_e2s, ipixs)]
-    # print("plop")
-    # e12_map = ray.get(e12_map_id) #ray.get(plop)
-    # e1_map = e12_map[0]
-    # e2_map = e12_map[1]
+def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
+    e1_map, e2_map = _randrot_maps_sub(cat_e1, cat_e2, ipix, npix)
 
     e1_map[bool_mask] /= count[bool_mask]
     e2_map[bool_mask] /= count[bool_mask]
 
     return e1_map, e2_map
 
-# @profile
 def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
-    e1_map, e2_map = _randrot_maps_fast(cat_e1, cat_e2, ipix, npix, bool_mask, count)
+    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
     return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
-# @profile
 def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
     cls = compute_master(field, field, wsp)
     return cls
-
-# def _randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, template_fields, wsp_dir):
-#     cls = {}
-#     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
-#     for tempname, temp in template_fields.items():
-#         cls[tempname] = compute_master(field, template_fields[tempname], wsp_dir[tempname])
-
-#     return cls
-
-# def _randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, psf_fields, wsp_dir):
-#     cls = {}
-#     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
-#     for key in psf_fields.keys():
-#         cls[key] = compute_master(field, psf_fields[key], wsp_dir[key])
-
-#     return cls
 
 
 def _multiproc_randrot_cls(nsamples, args, pos):
@@ -682,47 +411,9 @@ def _multiproc_randrot_cls(nsamples, args, pos):
     wsp.read_from(wsp_filename)
 
     _cls = []
-    for i in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+    for _ in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
         _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
 
     return _cls
 
 
-# def _multiproc_randrot_cross_cls(nsamples, args1, templates_dir, pos):
-#     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
-
-#     b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
-#     field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
-
-#     template_fields = {}
-#     wsp_dir  = {}
-#     for key, temp in templates_dir.items():
-#         mask = np.logical_not((temp == hp.UNSEEN) | (temp == 0.0)) # kinda dangerous...
-#         template_fields[key] = nmt.NmtField(mask, [temp])
-#         wsp_dir[key] = nmt.NmtWorkspace()
-#         wsp_dir[key].compute_coupling_matrix(field_0, template_fields[key], b)
-
-#     cls = []
-#     for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
-#         cls.append(_randrot_cross_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, template_fields, wsp_dir))
-
-#     return cls
-
-# def _multiproc_randrot_cross_PSF_cls(nsamples, args1, psf_maps, psf_mask_apo, pos):
-#     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, nside, lmax, nlb = args1
-
-#     b = nmt.NmtBin(nside, nlb=nlb, lmax=lmax)
-#     field_0 = nmt.NmtField(mask_apo, [np.zeros_like(mask_apo), np.zeros_like(mask_apo)], purify_e=purify_e, purify_b=purify_b)
-
-#     psf_fields = {}
-#     wsp_dir  = {}
-#     for key, psf_map in psf_maps.items():
-#         psf_fields[key] =  nmt.NmtField(psf_mask_apo, psf_maps[key], purify_e=purify_e, purify_b=purify_b)
-#         wsp_dir[key] = nmt.NmtWorkspace()
-#         wsp_dir[key].compute_coupling_matrix(field_0, psf_fields[key], b)
-
-#     cls = []
-#     for i in self.prog(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
-#         cls.append(_randrot_cross_PSF_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, psf_fields, wsp_dir))
-
-#     return cls

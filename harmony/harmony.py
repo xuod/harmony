@@ -180,33 +180,6 @@ class Harmony(object):
             bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
             return bpws
 
-    # def get_all_workspaces(self, obs1, obs2=None, save_wsp=None):
-    #     if obs2 is None:
-    #         obs2 = obs1
-    #     pairs = self.get_pairs(obs1, obs2=None)
-
-    #     self.check_update_cls(obs1, obs2)
- 
-    #     for i1,i2 in self.prog(pairs, desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
-    #         self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.get_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
-
-    # def get_workspace(self, obs1, obs2, i1, i2, save_wsp=None):
-    #     if isinstance(obs1, Observable):
-    #         obs1_name = obs1.obs_name
-    #         obs2_name = obs2.obs_name
-    #     else:
-    #         obs1_name = obs1
-    #         obs2_name = obs2
-    #     try:
-    #         return self.wsp[(obs1_name, obs2_name)][(i1,i2)]
-    #     except KeyError:
-    #         filename = self.get_workspace_filename(obs1, obs2, i1, i2)
-    #         try:
-    #             wsp = self.load_workspace(obs1, obs2, i1, i2)
-    #         except RuntimeError:
-    #             wsp = self.prepare_workspace(obs1, obs2, i1, i2, save_wsp=save_wsp)
-    #         return wsp
-
     def save_cls(self):
         make_directory(self.config.path_output+'/'+self.name)
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
@@ -232,7 +205,7 @@ class Harmony(object):
 
     def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None):
         if obs2 is None:
-            same_obs = True
+            # same_obs = True
             obs2 = obs1
         if i2 is None:
             i2=i1
@@ -256,6 +229,56 @@ class Harmony(object):
         
         return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
 
+    def compute_random_cls(self, obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom=1, auto_cls=False, save_cls=None):
+        assert random_obs1 or random_obs2
+        assert nrandom>0
+        if auto_cls:
+            assert obs1==obs2
+
+        self.check_obs(obs1, obs2)
+        if (i1, i2) not in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
+            self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = {}
+
+        # This would use a looot of memory
+        # # Observable 1
+        # if random_obs1:
+        #     fields1 = obs1.make_randomized_fields(self, i1, nrandom=nrandom)
+        # else:
+        #     fields1 = [obs1.get_field(self, i1)] * nrandom
+        # # Observable 2
+        # if random_obs2:
+        #     fields2 = obs2.make_randomized_fields(self, i2, nrandom=nrandom)
+        # else:
+        #     fields2 = [obs2.get_field(self, i2)] * nrandom
+
+        wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
+
+        _cls = []
+        for _ in self.prog(nrandom, desc='Harmony.compute_random_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+            # Observable 1
+            if random_obs1:
+                field1 = obs1.make_randomized_fields(self, i1, nrandom=1)[0]
+            else:
+                field1 = obs1.get_field(self, i1)
+
+            # Observable 2
+            if auto_cls:
+                field2 = field1
+            else:
+                if random_obs2:
+                    field2 = obs2.make_randomized_fields(self, i2, nrandom=1)[0]
+                else:
+                    field2 = obs2.get_field(self, i2)
+
+            _cls.append(compute_master(field1, field2, wsp))
+
+        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'] = np.array(_cls)
+
+        if save_cls or self.do_save_cls:
+            self.save_cls()
+        
+        return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
+
     def compute_all_cls(self, obs1, obs2=None, save_cls=None, auto_only=False):
         pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
         if obs2 is None:
@@ -263,6 +286,55 @@ class Harmony(object):
 
         for i1,i2 in self.prog(pairs, desc='Harmony.compute_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             self.compute_cls(obs1=obs1, i1=i1, obs2=obs2, i2=i2, save_cls=save_cls)
+
+    def compute_random_all_cls(self, obs1, obs2, random_obs1, random_obs2, nrandom=1, share_randoms=True, auto_cls=False, save_cls=None, auto_only=False):
+        assert random_obs1 or random_obs2
+        assert nrandom>0
+        if auto_cls:
+            assert obs1==obs2
+
+        self.check_obs(obs1, obs2)
+        
+        pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
+        pairs_i1 = [x[0] for x in pairs]
+        pairs_i2 = [x[1] for x in pairs]
+
+        _cls = {}
+        for x in pairs:
+            _cls[x] = []
+            if x not in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
+                self.cls[(obs1.obs_name, obs2.obs_name)][x] = {}
+
+        if share_randoms:
+            for i in self.prog(nrandom, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+                # Observable 1
+                if random_obs1:
+                    fields1 = {i1:obs1.make_randomized_fields(self, i1, nrandom=1)[0] for i1 in pairs_i1}
+                else:
+                    fields1 = {i1:obs1.get_field(self, i1) for i1 in pairs_i1}
+
+                # Observable 2
+                if auto_cls:
+                    fields2 = fields1
+                else:
+                    if random_obs2:
+                        fields2 = {i2:obs2.make_randomized_fields(self, i2, nrandom=1)[0] for i2 in pairs_i2}
+                    else:
+                        fields2 = {i2:obs2.get_field(self, i2) for i2 in pairs_i2}
+
+                for i1,i2 in pairs:
+                    wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
+                    _cls[i1,i2].append(compute_master(fields1[i1], fields2[i2], wsp))
+            
+            for x in pairs:
+                self.cls[(obs1.obs_name, obs2.obs_name)][x]['random'] = np.array(_cls[x])
+            
+            if save_cls or self.do_save_cls:
+                self.save_cls()
+
+        else:
+            for i1,i2 in self.prog(pairs, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+                self.compute_random_cls(obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom, save_cls=save_cls)
 
     def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None):
         if ibins is None:
@@ -304,60 +376,6 @@ class Harmony(object):
         if nrandom>0:
             self.compute_random_auto_cls(obs, nrandom=nrandom, save_cls=save_cls)
 
-    # def compute_all_auto_cls(self, obs, nrandom=0, save_cls=True, save_wsp=True):
-    #     self.check_update_cls(obs, obs)
-
-    #     for ibin in tqdm(obs.zbins, desc='Harmony.compute_all_auto_cls [obs:{}]'.format(obs.obs_name)):
-    #         self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save_cls=save_cls, save_wsp=save_wsp)
-
-    # def compute_all_cls(self, obs, nrandom=0, save_cls=True, save_wsp=True):
-    #     self.check_update_cls(obs, obs)
-
-    #     for i1 in tqdm(obs.zbins, desc='Harmony.compute_all_cls [obs:{}]'.format(obs.obs_name)):
-    #         # field1 = obs.get_field(self, i1)
-    #         for i2 in obs.zbins:
-    #             if (i2,i1) in self.cls[(obs.obs_name, obs.obs_name)].keys():
-    #                     # Even if same_obs, order of cls is different ((E1,B2) vs (E2,B1)) so best not to include it.
-    #                     # self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.cls[(obs1.obs_name, obs2.obs_name)][(i2,i1)]
-    #                     continue
-    #             else:
-    #                 if i1 == i2:
-    #                     ibin = i1
-    #                     self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)] = obs._compute_auto_cls(self, ibin, nrandom=nrandom, save_wsp=save_wsp)
-    #                     if save_cls:
-    #                         self.save_cls()
-    #                 else:
-    #                     # field2 = obs.get_field(self, i2)
-    #                     # self.cls[(obs.obs_name, obs.obs_name)][(i1,i2)] = nmt.compute_full_master(field1, field2, self.b)
-    #                     self.compute_cls(obs, obs, i1, i2, save_cls=save_cls, return_cls=False, check_cls=False, save_wsp=save_wsp)
-
-    # def compute_cross_template_cls(self, obs, nrandom, save=True):
-    #     for tempname in obs.template_dir.keys():
-    #         key = (obs.obs_name, tempname)
-    #         if key not in self.cls.keys():
-    #             self.cls[key] = {}
-    #         else:
-    #             print("Replacing cls[%s]".format(str(key)))
-
-    #     for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_template_cls [obs:{}]'.format(obs.obs_name)):
-    #         obs._compute_cross_template_cls(self, ibin, nrandom=nrandom)
-
-    #         if save:
-    #             self.save_cls()
-
-    # def compute_cross_PSF_cls(self, obs, nrandom, save=True):
-    #     for tempname in obs.psf_maps.keys():
-    #         key = (obs.obs_name, tempname)
-    #         if key not in self.cls.keys():
-    #             self.cls[key] = {}
-    #         else:
-    #             print("Replacing cls[%s]".format(str(key)))
-
-    #     for ibin in self.prog(obs.zbins, desc='Harmony.compute_cross_PSF_cls [obs:{}]'.format(obs.obs_name)):
-    #         obs._compute_cross_PSF_cls(self, ibin, nrandom=nrandom)
-
-    #         if save:
-    #             self.save_cls()
 
     def bin_cl_theory(self, cl_in, obs1, obs2, i1, i2, fix_pixwin=False):
         bpws = self.get_workspace_bpws(obs1, obs2, i1, i2)
