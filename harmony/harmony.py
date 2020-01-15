@@ -17,7 +17,8 @@ import twopoint
 import numpy as np
 
 class Harmony(object):
-    def __init__(self, config, nside, b=None, nlb=None, nproc=0, save_cls=True, save_wsp=True, verbose=True, purify_e=False, purify_b=False):
+    def __init__(self, config, nside, b=None, nlb=None, nproc=0, save_cls=True, save_wsp=True, verbose=True):
+        #, purify_e=False, purify_b=False):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -25,9 +26,9 @@ class Harmony(object):
         self.do_save_cls = save_cls
         self.do_save_wsp = save_wsp
 
-        self.purify_e = purify_e
-        self.purify_b = purify_b
-        self.fields_kw = {'purify_e':self.purify_e, 'purify_b':self.purify_b}
+        # self.purify_e = purify_e
+        # self.purify_b = purify_b
+        # self.fields_kw = {'purify_e':self.purify_e, 'purify_b':self.purify_b}
 
         if b is None:
             assert nlb is not None
@@ -54,21 +55,14 @@ class Harmony(object):
         self.wsp = {}
 
     @staticmethod
-    def get_pairs(obs1, obs2=None, auto_only=False):
-        if auto_only:
-            assert obs2 is None
-        
-        if obs2 is None:
-            same_obs = True
-        else:
-            same_obs = (obs1==obs2)
-        
-        if same_obs:
+    def get_pairs(obs1, obs2=None, auto_only=False):        
+        if (obs2==obs1) or obs2 is None: # same observable
             if auto_only:
                 pairs = [(i1,i1) for i1 in obs1.zbins]
             else:
                 pairs = [(i1,i2) for i,i1 in enumerate(obs1.zbins) for i2 in obs1.zbins[:i+1]]
         else:
+            assert not auto_only
             pairs = [(i1,i2) for i1 in obs1.zbins for i2 in obs2.zbins]
         
         return pairs
@@ -129,8 +123,8 @@ class Harmony(object):
     def prepare_workspace(self, obs1, obs2, i1, i2):
         self.check_obs(obs1, obs2)
 
-        field1 = obs1.get_field(self, i1)
-        field2 = obs2.get_field(self, i2)
+        field1 = obs1.get_field(i1)
+        field2 = obs2.get_field(i2)
 
         wsp = nmt.NmtWorkspace()
         wsp.compute_coupling_matrix(field1, field2, self.b)
@@ -212,8 +206,8 @@ class Harmony(object):
 
         self.check_obs(obs1, obs2)
 
-        field1 = obs1.get_field(self, i1)
-        field2 = obs2.get_field(self, i2)
+        field1 = obs1.get_field(i1)
+        field2 = obs2.get_field(i2)
 
         wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
 
@@ -257,18 +251,18 @@ class Harmony(object):
         for _ in self.prog(nrandom, desc='Harmony.compute_random_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             # Observable 1
             if random_obs1:
-                field1 = obs1.make_randomized_fields(self, i1, nrandom=1)[0]
+                field1 = obs1.make_randomized_fields(i1, nrandom=1)[0]
             else:
-                field1 = obs1.get_field(self, i1)
+                field1 = obs1.get_field(i1)
 
             # Observable 2
             if auto_cls:
                 field2 = field1
             else:
                 if random_obs2:
-                    field2 = obs2.make_randomized_fields(self, i2, nrandom=1)[0]
+                    field2 = obs2.make_randomized_fields(i2, nrandom=1)[0]
                 else:
-                    field2 = obs2.get_field(self, i2)
+                    field2 = obs2.get_field(i2)
 
             _cls.append(compute_master(field1, field2, wsp))
 
@@ -309,18 +303,18 @@ class Harmony(object):
             for i in self.prog(nrandom, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
                 # Observable 1
                 if random_obs1:
-                    fields1 = {i1:obs1.make_randomized_fields(self, i1, nrandom=1)[0] for i1 in pairs_i1}
+                    fields1 = {i1:obs1.make_randomized_fields(i1, nrandom=1)[0] for i1 in pairs_i1}
                 else:
-                    fields1 = {i1:obs1.get_field(self, i1) for i1 in pairs_i1}
+                    fields1 = {i1:obs1.get_field(i1) for i1 in pairs_i1}
 
                 # Observable 2
                 if auto_cls:
                     fields2 = fields1
                 else:
                     if random_obs2:
-                        fields2 = {i2:obs2.make_randomized_fields(self, i2, nrandom=1)[0] for i2 in pairs_i2}
+                        fields2 = {i2:obs2.make_randomized_fields(i2, nrandom=1)[0] for i2 in pairs_i2}
                     else:
-                        fields2 = {i2:obs2.get_field(self, i2) for i2 in pairs_i2}
+                        fields2 = {i2:obs2.get_field(i2) for i2 in pairs_i2}
 
                 for i1,i2 in pairs:
                     wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
@@ -334,22 +328,25 @@ class Harmony(object):
 
         else:
             for i1,i2 in self.prog(pairs, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
-                self.compute_random_cls(obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom, save_cls=save_cls)
+                self.compute_random_cls(obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom, auto_cls=auto_cls, save_cls=save_cls)
 
-    def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None):
-        if ibins is None:
-            ibins = obs.zbins
-        else:
-            ibins = np.array(ibins)
-        for ibin in self.prog(ibins, desc='Harmony.compute_random_auto_cls [obs:{}]'.format(obs.obs_name)):
-            clr = obs._compute_random_auto_cls(self, ibin, nrandom)
-            if 'random' in self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)].keys():
-                # print("Adding to existing randoms.", self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'].shape, clr.shape)
-                self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = np.concatenate([self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'], clr])
-            else:
-                self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = clr
-            if save_cls or self.do_save_cls:
-                self.save_cls()
+    # def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None):
+    #     if ibins is None:
+    #         ibins = obs.zbins
+    #     else:
+    #         ibins = np.array(ibins)
+    #     for ibin in self.prog(ibins, desc='Harmony.compute_random_auto_cls [obs:{}]'.format(obs.obs_name)):
+    #         clr = obs._compute_random_auto_cls(self, ibin, nrandom)
+    #         if 'random' in self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)].keys():
+    #             # print("Adding to existing randoms.", self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'].shape, clr.shape)
+    #             self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = np.concatenate([self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'], clr])
+    #         else:
+    #             self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = clr
+    #         if save_cls or self.do_save_cls:
+    #             self.save_cls()
+
+    def compute_random_auto_cls(self, obs, nrandom=1, save_cls=None):
+        self.compute_random_all_cls(obs, obs, True, True, nrandom=nrandom, share_randoms=False, auto_cls=True, save_cls=save_cls, auto_only=True)
 
     def compute_full_auto_cls(self, obs, nrandom=0, from_scratch=False, save_cls=None, save_maps=True, plot_maps=False):
         if from_scratch:
@@ -467,10 +464,10 @@ class Harmony(object):
         if os.path.exists(filename):
             cw.read_from(filename)
         else:
-            cw.compute_coupling_coefficients(obsa1.get_field(self, a1),
-                                             obsa2.get_field(self, a2),
-                                             obsb1.get_field(self, b1),
-                                             obsb2.get_field(self, b2)) #<- This is the time-consuming operation
+            cw.compute_coupling_coefficients(obsa1.get_field(a1),
+                                             obsa2.get_field(a2),
+                                             obsb1.get_field(b1),
+                                             obsb2.get_field(b2)) #<- This is the time-consuming operation
 
             cw.write_to(filename)
 

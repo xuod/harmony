@@ -1,4 +1,6 @@
 from .observable import *
+import numba
+
 
 class Galaxy(Observable):
     def __init__(self, config, nside, mode, nzbins, data_dir='../data', mask_dir='../masks', use_weights=False, dry_run=False, true_density=True, *args, **kwargs):
@@ -105,9 +107,15 @@ class Galaxy(Observable):
         if save:
             self.save_maps()
 
-    def make_fields(self, hm, include_templates=True):
-        for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
-            self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
+    # def make_fields(self, hm, include_templates=True):
+    #     for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+    #         self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
+
+    def prepare_fields(self):
+        out = {}
+        for ibin in self.zbins:
+            out[ibin] = [self.maps[ibin]['density']]
+        return out
 
     def _get_info(self):
         import pandas as pd
@@ -141,29 +149,40 @@ class Galaxy(Observable):
         df = pd.DataFrame(index=self.zbins, data=info)
         return df
     
-    def _compute_random_auto_cls(self, hm, ibin, nrandom, use_completeness=False):
+    def make_randomized_maps(self, ibin):
         npix = hp.nside2npix(self.nside)
-
         mask_apo = self.masks_apo[ibin]
-
-        wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp) #wsp = nmt.NmtWorkspace()
 
         Nobj = len(self.cats[ibin])
 
-        _cls = []
+        count = random_count(self.maps[ibin]['completeness'], Nobj)
+        density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'])
 
-        if use_completeness:
-            random_comp = self.masks[ibin].astype(float)
-        else:
-            random_comp = self.maps[ibin]['completeness']
+        return [density]
 
-        for i in self.prog(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
-            count = random_count(random_comp, Nobj)
-            density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=random_comp)
-            field_r = nmt.NmtField(mask_apo, [density], templates=None, purify_e=hm.purify_e, purify_b=hm.purify_b)
-            _cls.append(compute_master(field_r, field_r, wsp))
+    # def _compute_random_auto_cls(self, hm, ibin, nrandom, use_completeness=False):
+    #     npix = hp.nside2npix(self.nside)
 
-        return np.array(_cls)
+    #     mask_apo = self.masks_apo[ibin]
+
+    #     wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp) #wsp = nmt.NmtWorkspace()
+
+    #     Nobj = len(self.cats[ibin])
+
+    #     _cls = []
+
+    #     if use_completeness:
+    #         random_comp = self.masks[ibin].astype(float)
+    #     else:
+    #         random_comp = self.maps[ibin]['completeness']
+
+    #     for i in self.prog(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
+    #         count = random_count(random_comp, Nobj)
+    #         density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=random_comp)
+    #         field_r = nmt.NmtField(mask_apo, [density], templates=None, purify_e=hm.purify_e, purify_b=hm.purify_b)
+    #         _cls.append(compute_master(field_r, field_r, wsp))
+
+    #     return np.array(_cls)
 
     def plot_auto_cls(self, hm, remove_Nl=False, **kwargs):
         cls = {}
@@ -187,8 +206,10 @@ class Galaxy(Observable):
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='auto', titles=titles, ylabels=ylabels, **kwargs)
 
 
-def random_pos(completeness, nobj):
-    return np.random.choice(len(completeness), size=nobj, replace=True, p=completeness*1./np.sum(completeness))
+# def random_pos(completeness, nobj):
+#     return np.random.choice(len(completeness), size=nobj, replace=True, p=completeness*1./np.sum(completeness))
 
+@numba.jit(nopython=True, parallel=True)
 def random_count(completeness, nobj):
+    # even faster !
     return np.random.multinomial(nobj, pvals=completeness/np.sum(completeness))

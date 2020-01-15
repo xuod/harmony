@@ -190,43 +190,64 @@ class Shear(Observable):
             for ibin in self.zbins:
                 self.masks_apo[ibin] *= self.maps[ibin]['count']
 
-    def make_fields(self, hm, include_templates=True):
-        if hm.purify_b or hm.purify_e:
+    def prepare_fields(self):
+        if self.fields_kw.get('purify_b', False) or self.fields_kw.get('purify_e', False):
             print("WARNING: E/B-mode purification requires unseen pixels to be set to zero. Replacing...")
             for ibin in self.zbins:
                 self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
                 self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
+
+        out = {}
+        for ibin in self.zbins:
+            out[ibin] = [self.maps[ibin]['e1'], self.maps[ibin]['e2']]
         
-        templates = self._get_templates_array() if include_templates else None
+        return out
 
-        for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
-            self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
-                                             [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-                                             templates=templates,
-                                             **hm.fields_kw)
+    # def make_fields(self, hm, include_templates=True):
+    #     if hm.purify_b or hm.purify_e:
+    #         print("WARNING: E/B-mode purification requires unseen pixels to be set to zero. Replacing...")
+    #         for ibin in self.zbins:
+    #             self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
+    #             self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
+        
+    #     templates = self._get_templates_array() if include_templates else None
 
-    def make_randomized_fields(self, hm, ibin, nrandom=1, include_templates=True):
+    #     for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+    #         self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
+    #                                          [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
+    #                                          templates=templates,
+    #                                          **hm.fields_kw)
+
+    def make_randomized_maps(self, ibin):
         bool_mask = (self.maps[ibin]['count'] > 0.)
         self.get_ipix()
-        fields = []
 
-        templates = self._get_templates_array() if include_templates else None
+        e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
 
-        # remove progress bar for only one field
-        if nrandom == 1:
-            prog = [0]
-        else:
-            prog = self.prog(nrandom)
+        return [e1_map, e2_map]
+    
+    # def make_randomized_fields(self, hm, ibin, nrandom=1, include_templates=True):
+    #     bool_mask = (self.maps[ibin]['count'] > 0.)
+    #     self.get_ipix()
+    #     fields = []
 
-        for _ in prog:
-            e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
-            field =  nmt.NmtField(self.masks_apo[ibin],
-                                  [e1_map, e2_map],
-                                  templates=templates,
-                                  **hm.fields_kw)
-            fields.append(field)
+    #     templates = self._get_templates_array() if include_templates else None
 
-        return fields
+    #     # remove progress bar for only one field
+    #     if nrandom == 1:
+    #         prog = [0]
+    #     else:
+    #         prog = self.prog(nrandom)
+
+    #     for _ in prog:
+    #         e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
+    #         field =  nmt.NmtField(self.masks_apo[ibin],
+    #                               [e1_map, e2_map],
+    #                               templates=templates,
+    #                               **hm.fields_kw)
+    #         fields.append(field)
+
+    #     return fields
 
     def _get_info(self):
         import pandas as pd
@@ -282,36 +303,36 @@ class Shear(Observable):
             self.compute_ipix()
         return self.ipix
 
-    # @profile
-    def _compute_random_auto_cls(self, hm, ibin, nrandom):
-        npix = self.npix
-        cat = self.cats[ibin]
-        mask_apo = self.masks_apo[ibin]
+    # # @profile
+    # def _compute_random_auto_cls(self, hm, ibin, nrandom):
+    #     npix = self.npix
+    #     cat = self.cats[ibin]
+    #     mask_apo = self.masks_apo[ibin]
 
-        wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp)
-        wsp_filename = hm.get_workspace_filename(self, self, ibin, ibin)
+    #     wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp)
+    #     wsp_filename = hm.get_workspace_filename(self, self, ibin, ibin)
 
-        # Nobj = len(cat)
-        self.get_ipix()
+    #     # Nobj = len(cat)
+    #     self.get_ipix()
 
-        ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-        count = self.maps[ibin]['count']
-        bool_mask = (count > 0.)
+    #     ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    #     count = self.maps[ibin]['count']
+    #     bool_mask = (count > 0.)
 
-        _cls = []
+    #     _cls = []
 
-        if hm.nproc==0:
-            for _ in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
-                _cls.append(_randrot_cls(cat['e1'].astype(float), cat['e2'].astype(float), ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
+    #     if hm.nproc==0:
+    #         for _ in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
+    #             _cls.append(_randrot_cls(cat['e1'].astype(float), cat['e2'].astype(float), ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
 
-        else:
-            args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
-            _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cls, (len(_x), args, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-            for res in self.prog(_multiple_results, desc='{}._compute_random_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-                _cls += res.get()
-            print("\n")
+    #     else:
+    #         args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
+    #         _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cls, (len(_x), args, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
+    #         for res in self.prog(_multiple_results, desc='{}._compute_random_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
+    #             _cls += res.get()
+    #         print("\n")
 
-        return np.array(_cls)
+    #     return np.array(_cls)
 
     def plot_auto_cls(self, hm, remove_Nl=False, **kwargs):
         cls = {}
@@ -394,26 +415,26 @@ def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
 
     return e1_map, e2_map
 
-def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
-    e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
-    return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
+# def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
+#     e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
+#     return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
 
-def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
-    field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
-    cls = compute_master(field, field, wsp)
-    return cls
+# def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
+#     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
+#     cls = compute_master(field, field, wsp)
+#     return cls
 
 
-def _multiproc_randrot_cls(nsamples, args, pos):
-    cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp_filename = args
+# def _multiproc_randrot_cls(nsamples, args, pos):
+#     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp_filename = args
 
-    wsp = nmt.NmtWorkspace()
-    wsp.read_from(wsp_filename)
+#     wsp = nmt.NmtWorkspace()
+#     wsp.read_from(wsp_filename)
 
-    _cls = []
-    for _ in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
-        _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
+#     _cls = []
+#     for _ in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
+#         _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
 
-    return _cls
+#     return _cls
 
 

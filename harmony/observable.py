@@ -14,7 +14,7 @@ import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, aposize=0.0, apotype='C1', **kwargs):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, aposize=0.0, apotype='C1', **fields_kw):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -23,6 +23,18 @@ class Observable(object):
         # Apodization
         self.aposize = aposize
         self.apotype = apotype
+
+        # Field options
+        self.fields_kw = fields_kw # {}
+        # self.fields_kw['templates'] = None
+        # self.fields_kw['beam'] = kwargs.get('beam', None)
+        # self.fields_kw['purify_e'] = kwargs.get('purify_e', False)
+        # self.fields_kw['purify_b'] = kwargs.get('purify_b', False)
+        # self.fields_kw['n_iter_mask_purify'] = kwargs.get('n_iter_mask_purify', 3)
+        # self.fields_kw['tol_pinv'] = kwargs.get('tol_pinv', 1e-10)
+        # self.fields_kw['wcs'] = kwargs.get('wcs', None)
+        # self.fields_kw['n_iter'] = kwargs.get('n_iter', 3)
+        # self.fields_kw['lmax_sht'] = kwargs.get('lmax_sht', -1)
 
         self.map_names = map_names
         self.obs_name = obs_name
@@ -125,10 +137,31 @@ class Observable(object):
         for ibin in self.prog(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=self.aposize, apotype=self.apotype)
     
-    def make_fields(self, hm, include_templates=True):
+    # def make_fields(self, hm, include_templates=True):
+    #     raise NotImplementedError
+
+    def prepare_fields(self):
         raise NotImplementedError
 
-    def get_field(self, hm, ibin):
+    def make_fields(self, include_templates=True):
+        maps = self.prepare_fields() 
+
+        if self.fields_kw.get('purify_b', False) or self.fields_kw.get('purify_e', False):
+            print("WARNING: E/B-mode purification requires unseen pixels to be set to zero. Replacing...")
+            for ibin in self.zbins:
+                maps[ibin] = [hpunseen2zero(m) for m in maps[ibin]]
+
+        if include_templates:
+            templates_fields_kw = self.fields_kw.get('templates', None)
+            templates_arr = self._get_templates_array()
+            assert (templates_arr is None) or (templates_fields_kw is None), "[make_fields] conflict for templates: defined both as kwarg and manually."
+            if templates_fields_kw is None:
+                self.fields_kw['templates'] = templates_arr
+
+        for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
+            self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], maps[ibin], **self.fields_kw)
+
+    def get_field(self, ibin):
         if self.fields is not None:
             if ibin in self.fields:
                 return self.fields[ibin]
@@ -137,8 +170,26 @@ class Observable(object):
         else:
             raise RuntimeError("Fields are not constructed yet, use make_fields first.")
 
-    def make_randomized_fields(self, hm, ibin, nrandom=1):
+    # def make_randomized_fields(self, hm, ibin, nrandom=1):
+    #     raise NotImplementedError
+
+    def make_randomized_maps(self, ibin):
         raise NotImplementedError
+
+    def make_randomized_fields(self, ibin, nrandom=1):
+        # remove progress bar for only one field
+        if nrandom == 1:
+            prog = [0]
+        else:
+            prog = self.prog(nrandom)
+
+        fields = []
+        for _ in prog:
+            random_maps = self.make_randomized_maps(ibin)
+            field = nmt.NmtField(self.masks_apo[ibin], random_maps, **{k:self.fields_kw[k] for k in self.fields_kw.keys() if k!='templates'})
+            fields.append(field)
+
+        return fields
 
     def _get_info(self):
         raise NotImplementedError
@@ -191,7 +242,7 @@ class Observable(object):
         # self.templates = np.expand_dims(self.templates, axis=1)
 
     def load_DES_templates(self, templates_dir, bands=['g', 'r', 'i', 'z']):
-        self._init_templates()
+        self._check_init_templates()
 
         self.bands = bands
         self.syst = {}
