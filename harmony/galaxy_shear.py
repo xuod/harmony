@@ -392,6 +392,45 @@ class Shear(Observable):
 
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='BB', titles=titles, ylabels=ylabels, **kwargs)
 
+    def compute_kappa_maps(self, lmax=None, return_alms=True, aposize=None, apotype="C1"):
+        kappa = {}
+        if return_alms:
+            kappa_alms = {}
+
+        # Formula from Chang, C. et al. Dark Energy Survey Year 1 results: curved-sky weak lensing mass map. Mon. Not. R. Astron. Soc. 475, 3165–3190 (2018).
+        ell = np.arange(3*self.nside)
+        fl = np.zeros(len(ell)).astype(float)
+        fl[2:] = -np.sqrt(ell[2:]*(ell[2:]+1.)/((ell[2:]+2)*(ell[2:]-1.)))
+
+        z = np.zeros(hp.nside2npix(self.nside))
+
+        for ibin in self.prog(self.zbins, desc='{}.compute_kappa_maps'.format(self.obs_name)):
+            if aposize is not None:
+                temp_mask = nmt.mask_apodization(self.masks[ibin], aposize=aposize, apotype=apotype)
+            else:
+                temp_mask = self.masks[ibin]
+            alms_gamma = hp.map2alm([z, self.maps[ibin]['e1']*temp_mask, self.maps[ibin]['e2']*temp_mask], lmax=lmax, pol=True)
+            alms_kappa_E = hp.almxfl(alms_gamma[1], fl)
+            alms_kappa_B = hp.almxfl(alms_gamma[2], fl)
+
+            if return_alms:
+                kappa_alms[ibin] = {}
+                kappa_alms[ibin]['E'] = alms_kappa_E
+                kappa_alms[ibin]['B'] = alms_kappa_B
+
+            kappa[ibin] = {}
+            kappa[ibin]['E'] = hp.alm2map(alms_kappa_E, self.nside, verbose=False)
+            kappa[ibin]['B'] = hp.alm2map(alms_kappa_B, self.nside, verbose=False)
+
+            kappa[ibin]['E'][np.logical_not(self.masks[ibin].astype(bool))] = hp.UNSEEN
+            kappa[ibin]['B'][np.logical_not(self.masks[ibin].astype(bool))] = hp.UNSEEN
+
+
+        if return_alms:
+            return kappa, kappa_alms
+        else:
+            return kappa
+
 
 @numba.jit(nopython=True, parallel=True)
 def _randrot_maps_sub(cat_e1, cat_e2, ipix, npix):

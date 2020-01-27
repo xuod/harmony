@@ -136,8 +136,8 @@ class Harmony(object):
         
         return wsp
     
-    def prepare_all_workspaces(self, obs1, obs2=None):
-        pairs = self.get_pairs(obs1, obs2=obs2)
+    def prepare_all_workspaces(self, obs1, obs2=None, auto_only=False):
+        pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
         if obs2 is None:
             obs2 = obs1
 
@@ -223,6 +223,19 @@ class Harmony(object):
         
         return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
 
+    def _add_to_random(self, obs1, obs2, i1, i2, clr_new):
+        if 'random' in self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)].keys():
+            clr_old = self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random']
+            if clr_old is not None:
+                assert isinstance(clr_old, np.ndarray)
+                assert clr_old.shape[1:] == clr_new.shape[1:]
+                print("Adding to existing randoms.")
+                self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'] = np.concatenate([clr_old, clr_new], axis=0)
+            else:
+                self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'] = clr_new
+        else:
+            self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'] = clr_new
+
     def compute_random_cls(self, obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom=1, auto_cls=False, save_cls=None):
         assert random_obs1 or random_obs2
         assert nrandom>0
@@ -266,7 +279,7 @@ class Harmony(object):
 
             _cls.append(compute_master(field1, field2, wsp))
 
-        self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'] = np.array(_cls)
+        self._add_to_random(obs1, obs2, i1, i2, np.array(_cls))
 
         if save_cls or self.do_save_cls:
             self.save_cls()
@@ -320,8 +333,9 @@ class Harmony(object):
                     wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
                     _cls[i1,i2].append(compute_master(fields1[i1], fields2[i2], wsp))
             
-            for x in pairs:
-                self.cls[(obs1.obs_name, obs2.obs_name)][x]['random'] = np.array(_cls[x])
+            for i1,i2 in pairs:
+                self._add_to_random(obs1, obs2, i1, i2, np.array(_cls[i1,i2]))
+                # self.cls[(obs1.obs_name, obs2.obs_name)][x]['random'] = np.array(_cls[x])
             
             if save_cls or self.do_save_cls:
                 self.save_cls()
@@ -430,11 +444,22 @@ class Harmony(object):
 
         return spec
 
-    def get_cl(self, obs1, obs2, i1, i2, debias=True):
-        out = np.copy(self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['data'])
-        if obs1==obs2 and i1==i2 and debias:
-            out -= np.mean(self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]['random'], axis=0)            
-        return out
+    def get_cl(self, obs1, obs2, i1, i2, debias=True, which=None):
+        if isinstance(obs1, Observable):
+            obs1_name = obs1.obs_name
+            obs2_name = obs2.obs_name
+        else:
+            obs1_name = obs1
+            obs2_name = obs2
+
+        if which is not None:
+            assert which in ['data', 'random']
+            return np.copy(self.cls[(obs1_name, obs2_name)][(i1,i2)][which])
+        else:
+            out = np.copy(self.cls[(obs1_name, obs2_name)][(i1,i2)]['data'])
+            if obs1==obs2 and i1==i2 and debias:
+                out -= np.mean(self.cls[(obs1_name, obs2_name)][(i1,i2)]['random'], axis=0)            
+            return out
 
     def _compute_gaussian_covariance_block(self, obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=True):
 

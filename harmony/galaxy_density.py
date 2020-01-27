@@ -49,8 +49,8 @@ class Galaxy(Observable):
             # comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
             # comp[comp == hp.UNSEEN] = 0.0
             # self.maps[ibin]['completeness'] = comp
-            self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False)
-            self.maps[ibin]['completeness'] = hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False)
+            self.masks[ibin] = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False))
+            self.maps[ibin]['completeness'] = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False))
 
     def init_redmagic_Y1(self, nzbins):
         basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
@@ -150,12 +150,15 @@ class Galaxy(Observable):
         return df
     
     def make_randomized_maps(self, ibin):
-        npix = hp.nside2npix(self.nside)
-        mask_apo = self.masks_apo[ibin]
+        # npix = hp.nside2npix(self.nside)
+        # mask_apo = self.masks_apo[ibin]
 
-        Nobj = len(self.cats[ibin])
+        Nobj = len(self.cats[ibin]['ra'])
 
+        # completeness = self.maps[ibin]['completeness']
+        # print(completeness.min(), completeness.max(), np.all(np.isfinite(completeness)))
         count = random_count(self.maps[ibin]['completeness'], Nobj)
+        # import pdb; pdb.set_trace()
         density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'])
 
         return [density]
@@ -209,7 +212,7 @@ class Galaxy(Observable):
 # def random_pos(completeness, nobj):
 #     return np.random.choice(len(completeness), size=nobj, replace=True, p=completeness*1./np.sum(completeness))
 
-@numba.jit(nopython=True, parallel=True)
+# @numba.jit(nopython=True, parallel=True)
 def random_count(completeness, nobj):
     # even faster !
-    return np.random.multinomial(nobj, pvals=completeness/np.sum(completeness))
+    return np.random.multinomial(nobj, pvals=completeness/np.sum(completeness)).astype(float)

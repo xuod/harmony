@@ -19,9 +19,9 @@ def prog(verbose):
     if verbose:
         def f(x, *args, **kwargs):
             if isinstance(x, Iterable):
-                return tqdm(x, *args, **kwargs)
+                return tqdm(x, *args, dynamic_ncols=True, **kwargs)
             elif int(x)==x:
-                return trange(x, *args, **kwargs)
+                return trange(x, *args, dynamic_ncols=True, **kwargs)
             else:
                 raise NotImplementedError
 
