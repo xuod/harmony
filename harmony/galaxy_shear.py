@@ -99,7 +99,7 @@ class Shear(Observable):
             full_cat = fits.open(os.path.join(self.data_dir, filename_template))
         if ipix_instead_of_radec:
             self.ipix = {}
-        for ibin in self.prog(self.zbins):
+        for ibin in self.prog(self.zbins, desc='{}._init_full'.format(self.obs_name)):
             if single_file:
                 _cat = full_cat[ext_template.format(ibin)].data
             else:
@@ -125,7 +125,7 @@ class Shear(Observable):
         is_list = isinstance(tables, list)
         if ipix_instead_of_radec:
             self.ipix = {}
-        for i, ibin in self.prog(enumerate(self.zbins)):
+        for i, ibin in self.prog(enumerate(self.zbins), desc='{}._init_tables'.format(self.obs_name)):
             if is_list:
                 _cat = tables[i]
             else:

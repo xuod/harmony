@@ -3,7 +3,7 @@ import numba
 
 
 class Galaxy(Observable):
-    def __init__(self, config, nside, mode, nzbins, data_dir='../data', mask_dir='../masks', use_weights=False, dry_run=False, true_density=True, *args, **kwargs):
+    def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', mask_dir='../masks', get_count_weights_from=None, dry_run=False, density_convention=2, completeness_cut=0.8, *args, **kwargs):
 
         self.obs_name = 'galaxy_density'
         self.map_names = ['count', 'density', 'completeness']
@@ -17,89 +17,149 @@ class Galaxy(Observable):
         self.data_dir = data_dir
         self.mask_dir = mask_dir
 
-        self.true_density = true_density
+        assert density_convention in [1,2]
+        self.density_convention = density_convention
+        self.completeness_cut = completeness_cut
+
+        assert mask_mode in ['binary', 'weights', 'inverse_weights', 'completeness', 'weights*completeness', 'inverse_weights*completeness']
+        self.mask_mode = mask_mode
+
+        assert get_count_weights_from in [None, 'mask', 'catalog']
+        self.get_count_weights_from = get_count_weights_from
+
+        load_catalog_weights=(get_count_weights_from=='catalog')
+        load_weights_maps = ('weights' in mask_mode) or (get_count_weights_from=='mask')
 
         self.cats = {}
 
-        self.has_weights = False
-
         if not dry_run:
             if mode=='redmagic_Y3':
-                self.init_redmagic_Y3(self.nzbins)
-            elif mode=='maglim_Y3':
-                self.init_maglim_Y3(self.nzbins)
-            elif mode=='redmagic_Y1':
-                self.init_redmagic_Y1(self.nzbins)
-            elif mode=='BAO_Y1':
-                self.init_BAO_Y1(self.nzbins, use_weights)
+                self.init_redmagic_Y3(self.nzbins, load_catalog_weights=load_catalog_weights, load_weights_maps=load_weights_maps)
+            # elif mode=='maglim_Y3':
+            #     self.init_maglim_Y3(self.nzbins)
+            # elif mode=='redmagic_Y1':
+            #     self.init_redmagic_Y1(self.nzbins)
+            # elif mode=='BAO_Y1':
+            #     self.init_BAO_Y1(self.nzbins, use_weights)
             else:
                 raise NotImplementedError
 
-    def init_redmagic_Y3(self, nzbins):
-        # basename = 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_'
-        # cats_name = ['redmagic_highdens_0.5', 'redmagic_highlum_1.0', 'redmagic_higherlum_1.5'] #
-        # mask_ext = '_vlim_zmask.fit'
-        # cats_ext = ['-10.fit', '-04.fit', '-01.fit']
-
-        # which_cat_zbins = [0,0,0,1,2]
+    def init_redmagic_Y3(self, nzbins, load_catalog_weights, load_weights_maps):
 
         for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y3'):
-            self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-            # self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_binary_nside%i.fits'%(self.nside)), verbose=False)
-            # comp = hp.read_map(os.path.join(self.mask_dir, basename+cats_name[which_cat_zbins[ibin]]+'_FRACGOOD_nside%i.fits'%(self.nside)), verbose=False)
-            # comp[comp == hp.UNSEEN] = 0.0
-            # self.maps[ibin]['completeness'] = comp
-            self.masks[ibin] = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False))
-            self.maps[ibin]['completeness'] = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False))
+            # Loading catalog
+            temp = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
+            self.cats[ibin] = {}
+            self.cats[ibin]['ra'] = temp['ra']
+            self.cats[ibin]['dec'] = temp['dec']
 
-    def init_redmagic_Y1(self, nzbins):
-        basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
+            # Load weights from catalog
+            if load_catalog_weights:
+                self.cats[ibin]['weight'] = temp['weight']
 
-        for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y1'):
-            self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-            self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
-            comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRACGOOD_nside{}.fits'.format(self.nside)), verbose=False)
-            comp[comp == hp.UNSEEN] = 0.0
+            # Loading weights and completeness map
+            comp = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False)).astype(float)
+            if load_weights_maps:
+                weights = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False)).astype(float)
+            else:
+                weights = np.ones_like(comp)
+
+            # Exclude regions where completeness is below a certain level
+            if self.completeness_cut is not None:
+                w = comp < self.completeness_cut
+                comp[w] = 0.
+            
+            # Making sure to exclude regions where completeness is 0
+            bool_mask = comp>0.
+            weights[np.logical_not(bool_mask)] = 0.
+
+            # Getting completeness
             self.maps[ibin]['completeness'] = comp
+                        
+            # Getting mask for NmtField
+            if self.mask_mode == 'binary':
+                self.masks[ibin] = (weights > 0.).astype(float)
+            elif self.mask_mode == 'weights':
+                self.masks[ibin] = weights
+            elif self.mask_mode == 'inverse_weights':
+                self.masks[ibin] = np.zeros_like(weights)
+                self.masks[ibin][bool_mask] = 1./weights[bool_mask]
+            elif self.mask_mode == 'completeness':
+                self.masks[ibin] = comp
+            elif self.mask_mode == 'weights*completeness':
+                self.masks[ibin] = weights * comp
+            elif self.mask_mode == 'inverse_weights*completeness':
+                self.masks[ibin] = np.zeros_like(weights)
+                self.masks[ibin][bool_mask] = comp[bool_mask]/weights[bool_mask]
+            else:
+                raise NotImplementedError
+
+            if self.get_count_weights_from=='mask':
+                self.cats[ibin]['weights_map'] = weights
+
+    # def init_redmagic_Y1(self, nzbins):
+    #     basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
+
+    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y1'):
+    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
+    #         self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
+    #         comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRACGOOD_nside{}.fits'.format(self.nside)), verbose=False)
+    #         comp[comp == hp.UNSEEN] = 0.0
+    #         self.maps[ibin]['completeness'] = comp
     
-    def init_BAO_Y1(self, nzbins, use_weights):
-        basename = 'DES_Y1A1_LSSBAO_v1.0_MASK_HPIX4096RING'
+    # def init_BAO_Y1(self, nzbins, use_weights):
+    #     basename = 'DES_Y1A1_LSSBAO_v1.0_MASK_HPIX4096RING'
 
-        for ibin in self.prog(self.zbins, desc='Galaxy.init_BAO_Y1'):
-            self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-            self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
-            comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRAC_nside{}.fits'.format(self.nside)), verbose=False)
-            comp[comp == hp.UNSEEN] = 0.0
-            self.maps[ibin]['completeness'] = comp
-        self.has_weights = use_weights
+    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_BAO_Y1'):
+    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
+    #         self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
+    #         comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRAC_nside{}.fits'.format(self.nside)), verbose=False)
+    #         comp[comp == hp.UNSEEN] = 0.0
+    #         self.maps[ibin]['completeness'] = comp
+    #     self.has_weights = use_weights
 
-    def init_maglim_Y3(self, nzbins):
-        for ibin in self.prog(self.zbins, desc='Galaxy.init_maglim_Y3'):
-            self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'maglim_bin{}.fits'.format(ibin+1)))[1].data
-            self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_binary_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
-            comp = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_comp_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
-            comp[comp == hp.UNSEEN] = 0.0
-            self.maps[ibin]['completeness'] = comp
+    # def init_maglim_Y3(self, nzbins):
+    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_maglim_Y3'):
+    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'maglim_bin{}.fits'.format(ibin+1)))[1].data
+    #         self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_binary_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
+    #         comp = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_comp_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
+    #         comp[comp == hp.UNSEEN] = 0.0
+    #         self.maps[ibin]['completeness'] = comp
 
     def make_maps(self, save=True):
         for ibin in self.prog(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
-            if self.has_weights:
+
+            # get_count_weights_from in [None, 'mask', 'catalog']
+            if self.get_count_weights_from is None:
+                _, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'], None, self.nside,
+                                            mask=None,
+                                            weight=None,
+                                            fill_UNSEEN=False, return_extra=False)
+
+                density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], density_convention=self.density_convention)
+
+            elif self.get_count_weights_from=='mask':
+                cat = self.cats[ibin]
+                ipix = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+                weights = cat['weights_map'][ipix]
+                w = weights>0.
+                count_w, count, _ = ca.cosmo.make_healpix_map(None, None,
+                                            [np.ones(np.sum(w))], self.nside,
+                                            mask=None,
+                                            weight=[weights[w]], ipix=ipix[w],
+                                            fill_UNSEEN=False, return_extra=False, mode='sum')
+
+                density = ca.cosmo.count2density(count_w[0], mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], density_convention=self.density_convention)
+
+            else: #self.get_count_weights_from=='catalog'
                 count_w, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
                                             [np.ones_like(cat['dec'])], self.nside,
                                             mask=None,
                                             weight=[cat['weight']],
                                             fill_UNSEEN=False, return_extra=False, mode='sum')
 
-                density = ca.cosmo.count2density(count_w[0], mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], true_density=self.true_density)
-
-            else:
-                _, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'], None, self.nside,
-                                            mask=self.masks[ibin],
-                                            weight=None,
-                                            fill_UNSEEN=False, return_extra=False)
-
-                density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], true_density=self.true_density)
+                density = ca.cosmo.count2density(count_w[0], mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], density_convention=self.density_convention)
 
             self.maps[ibin]['count'] = count
             self.maps[ibin]['density'] = density
@@ -130,19 +190,22 @@ class Galaxy(Observable):
         info['nbar (effective, std)'] = []
 
         for i in self.zbins:
-            fsky = np.sum(self.masks[i]>0.) * 1./ len(self.masks[i])
-            fsky_eff = np.sum(self.maps[i]['completeness']) * 1./ len(self.maps[i]['completeness'])
-            Ngal = int(np.sum(self.maps[i]['count'][self.masks[i].astype(bool)]))
+            bool_mask = self.masks[i]>0.
+            fsky = np.sum(bool_mask) * 1./ len(bool_mask)
+            fsky_eff = np.sum(self.maps[i]['completeness']) * 1./ len(bool_mask)
             area = 4.*np.pi * fsky
             area_eff = 4.*np.pi * fsky_eff
+            Ngal = int(np.sum(self.maps[i]['count'][bool_mask]))
+            # Ngal_weighted = np.average(self.maps[i]['count'], weights=np.sum(self.masks[i]))
+
             nbar = Ngal / area
             nbar_eff = Ngal / area_eff
             
             info['fsky'].append(fsky)
             info['fsky (effective)'].append(fsky_eff)
-            info['Ngal'].append(Ngal)
             info['area (std)'].append(area)
             info['area (effective, std)'].append(area_eff)
+            info['Ngal'].append(Ngal)
             info['nbar (std)'].append(nbar)
             info['nbar (effective, std)'].append(nbar_eff)
 

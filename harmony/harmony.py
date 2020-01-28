@@ -120,14 +120,14 @@ class Harmony(object):
         if not bpws_only:
             wsp.write_to(filename)
 
-    def prepare_workspace(self, obs1, obs2, i1, i2):
+    def prepare_workspace(self, obs1, obs2, i1, i2, **kwargs):
         self.check_obs(obs1, obs2)
 
         field1 = obs1.get_field(i1)
         field2 = obs2.get_field(i2)
 
         wsp = nmt.NmtWorkspace()
-        wsp.compute_coupling_matrix(field1, field2, self.b)
+        wsp.compute_coupling_matrix(field1, field2, self.b, **kwargs)
 
         self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = wsp
 
@@ -136,14 +136,14 @@ class Harmony(object):
         
         return wsp
     
-    def prepare_all_workspaces(self, obs1, obs2=None, auto_only=False):
+    def prepare_all_workspaces(self, obs1, obs2=None, auto_only=False, **kwargs):
         pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
         if obs2 is None:
             obs2 = obs1
 
         for i1,i2 in self.prog(pairs, desc='Harmony.prepare_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             # self.wsp[(obs1.obs_name, obs2.obs_name)][(i1,i2)] = self.prepare_workspace(obs1, obs2, i1, i2)
-            self.prepare_workspace(obs1, obs2, i1, i2)
+            self.prepare_workspace(obs1, obs2, i1, i2, **kwargs)
 
     def get_workspace(self, obs1, obs2, i1, i2):
         if isinstance(obs1, Observable):
@@ -160,11 +160,11 @@ class Harmony(object):
         else:
             raise KeyError
 
-    def get_or_prepare_workspace(self, obs1, obs2, i1, i2):
-        try:
-            return self.get_workspace(obs1, obs2, i1, i2)
-        except:
-            return self.prepare_workspace(obs1, obs2, i1, i2)
+    # def get_or_prepare_workspace(self, obs1, obs2, i1, i2, **kwargs):
+    #     try:
+    #         return self.get_workspace(obs1, obs2, i1, i2)
+    #     except:
+    #         return self.prepare_workspace(obs1, obs2, i1, i2, **kwargs)
 
     def get_workspace_bpws(self, obs1, obs2, i1, i2):
         try:
@@ -209,7 +209,7 @@ class Harmony(object):
         field1 = obs1.get_field(i1)
         field2 = obs2.get_field(i2)
 
-        wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
+        wsp = self.get_workspace(obs1, obs2, i1, i2)
 
         _cls = compute_master(field1, field2, wsp)
 
@@ -258,7 +258,7 @@ class Harmony(object):
         # else:
         #     fields2 = [obs2.get_field(self, i2)] * nrandom
 
-        wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
+        wsp = self.get_workspace(obs1, obs2, i1, i2)
 
         _cls = []
         for _ in self.prog(nrandom, desc='Harmony.compute_random_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
@@ -330,7 +330,7 @@ class Harmony(object):
                         fields2 = {i2:obs2.get_field(i2) for i2 in pairs_i2}
 
                 for i1,i2 in pairs:
-                    wsp = self.get_or_prepare_workspace(obs1, obs2, i1, i2)
+                    wsp = self.get_workspace(obs1, obs2, i1, i2)
                     _cls[i1,i2].append(compute_master(fields1[i1], fields2[i2], wsp))
             
             for i1,i2 in pairs:
