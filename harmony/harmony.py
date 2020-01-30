@@ -38,7 +38,8 @@ class Harmony(object):
             self.b = b
             
         self.ell = self.b.get_effective_ells()
-        self.clear_cls_wsp()
+        self.cls = {}
+        self.wsp = {}
 
         self.nproc = nproc
         if nproc > 1:

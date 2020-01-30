@@ -76,6 +76,20 @@ class Observable(object):
     # def load_catalogs(self):
     #     print('Method load_catalogs not implemented, nothing to do.')
 
+    def clear(self):
+        self.maps = {} # to be organized as maps[redshift_bin][map_name]
+        self.fields = {} # to be organized as maps[redshift_bin][map_name]
+        self.masks = {} # to be organized as maps[redshift_bin][map_name] # NO !
+        self.masks_apo = {} # to be organized as maps[redshift_bin][map_name] # NO !
+
+        for i in self.zbins:
+            self.masks[i] = None
+            self.masks_apo[i] = None
+            self.maps[i] = {}
+            self.fields[i] = None
+            for name in self.map_names:
+                self.maps[i][name] = None
+
     def make_maps(self):
         raise NotImplementedError
 
