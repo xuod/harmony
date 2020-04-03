@@ -1,15 +1,22 @@
-from .observable import *
-from .utils import *
-import sys
+from .observable import Observable
+from .utils import prog, hpunseen2zero
+import os, sys
 import numba
 import random
+import numpy as np
+import twopoint
+from astropy.io import fits
+import numpy as np
+import castor as ca
+import pymaster as nmt
+import healpy as hp
 
 TWOPI = 2. * np.pi
 
 class Shear(Observable):
     def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', dry_run=False, *args, **kwargs):
         self.obs_name = 'galaxy_shear'
-        self.map_names = ['count', 'e1', 'e2']
+        self.map_names = ['count', 'e1', 'e2', 'weighted_count']
 
         super(Shear, self).__init__(config, nside, mode, nzbins, self.obs_name, self.map_names, *args, **kwargs)
 
@@ -31,42 +38,45 @@ class Shear(Observable):
 
         if not dry_run:
             if mode.startswith('buzzard'):
-                self._init_buzzard()
+                # self._init_buzzard()
+                raise NotImplementedError
             elif mode=='data_sub' or mode=='mastercat':
-                self._init_data()
+                self._init_data(kwargs.get('use_weights', True))
             elif mode=='mock':
-                self._init_mock()
+                self._init_mock(kwargs.get('use_weights', True))
+                # raise NotImplementedError
             elif mode=='full':
-                self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('single_file', False), kwargs.get('ext_template', 'zbin_{}'), kwargs.get('ipix_instead_of_radec', False))
+                self._init_full(kwargs['filename_template'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('single_file', False), kwargs.get('ext_template', 'zbin_{}'), kwargs.get('ipix_instead_of_radec', False), kwargs.get('use_weights', True))
             elif mode=='tables':
-                self._init_tables(kwargs['tables'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('ext_template', 'zbin_{}', kwargs.get('ipix_instead_of_radec', False)))
+                self._init_tables(kwargs['tables'], kwargs['dict'], kwargs['flip_e2'], kwargs.get('ext_template', 'zbin_{}', kwargs.get('ipix_instead_of_radec', False)), kwargs.get('use_weights', True))
             elif mode=='flask':
-                self._init_flask(kwargs['isim'], kwargs['cookie'])
+                # self._init_flask(kwargs['isim'], kwargs['cookie'])
+                raise NotImplementedError
             elif mode=='psf' or 'dry':
                 pass
             else:
                 raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
 
-    def _init_buzzard(self):
-        # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
-        for ibin in self.prog(self.zbins):
-            filename = os.path.join(self.data_dir, "Niall_WL_y3_bin_{}.fits".format(ibin+1))
-            _cat = fits.open(filename)[1].data
+    # def _init_buzzard(self):
+    #     # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
+    #     for ibin in self.prog(self.zbins):
+    #         filename = os.path.join(self.data_dir, "Niall_WL_y3_bin_{}.fits".format(ibin+1))
+    #         _cat = fits.open(filename)[1].data
 
-            cat = {}
-            cat['ra'] = _cat['RA']
-            cat['dec'] = _cat['DEC']
+    #         cat = {}
+    #         cat['ra'] = _cat['RA']
+    #         cat['dec'] = _cat['DEC']
 
-            if self.mode == 'buzzard':
-                cat['e1'] = _cat['E1']
-                cat['e2'] = _cat['E2']
-            if self.mode == 'buzzard_truth':
-                cat['e1'] = _cat['G1']
-                cat['e2'] = _cat['G2']
+    #         if self.mode == 'buzzard':
+    #             cat['e1'] = _cat['E1']
+    #             cat['e2'] = _cat['E2']
+    #         if self.mode == 'buzzard_truth':
+    #             cat['e1'] = _cat['G1']
+    #             cat['e2'] = _cat['G2']
 
-            self.cats[ibin] = cat
+    #         self.cats[ibin] = cat
 
-    def _init_data(self):
+    def _init_data(self, use_weights=True):
         for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
@@ -78,9 +88,15 @@ class Shear(Observable):
             cat['e1'] = _cat['g1']
             cat['e2'] = -1.0 * _cat['g2']
 
+            if use_weights:
+                    cat['weight'] = _cat['weight'].astype(float)
+            else:
+                # print("Data file does not have weight column")
+                cat['weight'] = None
+
             self.cats[ibin] = cat
 
-    def _init_mock(self):
+    def _init_mock(self, use_weights=True):
         for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
@@ -92,9 +108,15 @@ class Shear(Observable):
             cat['e1'] = _cat['e1']
             cat['e2'] = _cat['e2']
 
+            if use_weights:
+                    cat['weight'] = _cat['weight'].astype(float)
+            else:
+                # print("Data file does not have weight column")
+                cat['weight'] = None
+
             self.cats[ibin] = cat
 
-    def _init_full(self, filename_template, dict, flip_e2, single_file=False, ext_template='zbin_{}', ipix_instead_of_radec=False):
+    def _init_full(self, filename_template, dict, flip_e2, single_file=False, ext_template='zbin_{}', ipix_instead_of_radec=False, use_weights=True):
         if single_file:
             full_cat = fits.open(os.path.join(self.data_dir, filename_template))
         if ipix_instead_of_radec:
@@ -113,6 +135,11 @@ class Shear(Observable):
                 cat['ra'] = _cat[dict['ra']]
                 cat['dec'] = _cat[dict['dec']]
 
+            if use_weights:
+                cat['weight'] = _cat[dict['weight']]
+            else:
+                cat['weight'] = None
+            
             cat['e1'] = _cat[dict['e1']]
             cat['e2'] = _cat[dict['e2']]
 
@@ -121,7 +148,7 @@ class Shear(Observable):
 
             self.cats[ibin] = cat    
 
-    def _init_tables(self, tables, dict, flip_e2=False, ext_template='zbin_{}', ipix_instead_of_radec=False):
+    def _init_tables(self, tables, dict, flip_e2=False, ext_template='zbin_{}', ipix_instead_of_radec=False, use_weights=True):
         is_list = isinstance(tables, list)
         if ipix_instead_of_radec:
             self.ipix = {}
@@ -138,6 +165,11 @@ class Shear(Observable):
                 cat['ra'] = _cat[dict['ra']]
                 cat['dec'] = _cat[dict['dec']]
 
+            if use_weights:
+                cat['weight'] = _cat[dict['weight']]
+            else:
+                cat['weight'] = None
+            
             cat['e1'] = _cat[dict['e1']]
             cat['e2'] = _cat[dict['e2']]
 
@@ -146,30 +178,69 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
-    def _init_flask(self, isim, cookie):
-        for ibin in self.prog(self.zbins):
-            filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
-            _cat = fits.open(filename)[1].data
+    # def _init_flask(self, isim, cookie):
+    #     for ibin in self.prog(self.zbins):
+    #         filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
+    #         _cat = fits.open(filename)[1].data
 
+    #         cat = {}
+    #         cat['ra'] = _cat['RA']
+    #         cat['dec'] = _cat['DEC']
+
+    #         cat['e1'] = _cat['GAMMA1']
+    #         cat['e2'] = -1.0 * _cat['GAMMA2']
+
+    #         self.cats[ibin] = cat   
+
+    def split_bin(self, ibin, nsplits, remove=False):
+        full_cat = self.cats[ibin]
+
+        def get_splits(N, m):
+            # assign split indices with equal number of samples (or approximately if N%m!=0)
+            size, extra = divmod(N,m)
+            splits = np.concatenate([np.random.choice(m,size=extra,replace=False)]+[np.repeat(i,size) for i in range(m)])
+            np.random.shuffle(splits)
+            return splits
+
+        splits = get_splits(len(full_cat['ra']), nsplits)
+        for i in range(nsplits):
             cat = {}
-            cat['ra'] = _cat['RA']
-            cat['dec'] = _cat['DEC']
+            w = splits==i
+            cat['ra']  = full_cat['ra'][w]
+            cat['dec'] = full_cat['dec'][w]
+            cat['e1']  = full_cat['e1'][w]
+            cat['e2']  = full_cat['e2'][w]
+            if full_cat['weight'] is None:
+                cat['weight'] = None
+            else:
+                cat['weight']  = full_cat['weight'][w]
+            zbin = str(ibin)+'_'+str(i)
+            self.cats[zbin] = cat
+            self.zbins.append(zbin)
+            self.masks[zbin] = None
+            self.masks_apo[zbin] = None
+            self.maps[zbin] = {}
+            self.fields[zbin] = None
+            for name in self.map_names:
+                self.maps[zbin][name] = None
 
-            cat['e1'] = _cat['GAMMA1']
-            cat['e2'] = -1.0 * _cat['GAMMA2']
+        if remove:
+            self.zbins.remove(ibin)
+            self.cats.pop(ibin)
 
-            self.cats[ibin] = cat   
+        self.nzbins = len(self.zbins)
 
     def make_maps(self, save=True):
         keys = ['e1', 'e2']
         self.get_ipix()
         for ibin in self.prog(self.zbins, desc='{}.make_maps'.format(self.obs_name)):
             cat = self.cats[ibin]
-            quantities, count, mask = ca.cosmo.make_healpix_map(None, None,
+            quantities, count, mask, sum_w_maps = ca.cosmo.make_healpix_map(None, None,
                                                     quantity=[cat[_x] for _x in keys],
                                                     nside=self.nside, fill_UNSEEN=True,
-                                                    mask=None, weight=None,
-                                                    ipix=self.ipix[ibin])
+                                                    mask=None, weight=cat['weight'],
+                                                    ipix=self.ipix[ibin], return_w_maps=True,
+                                                    return_extra=False)
             for j, key in enumerate(keys):
                 self.maps[ibin][key] = quantities[j]
 
@@ -177,6 +248,7 @@ class Shear(Observable):
             count_cut_mask = (count>self.count_cut)
 
             self.maps[ibin]['count'] = count * count_cut_mask.astype(int)
+            self.maps[ibin]['weighted_count'] = sum_w_maps[0] * count_cut_mask.astype(int)
             self.masks[ibin] = mask.astype(float) * count_cut_mask.astype(float)
 
         if save:
@@ -188,7 +260,7 @@ class Shear(Observable):
         # Apply inverse-variance weighting after apodization
         if self.mask_mode =='count':
             for ibin in self.zbins:
-                self.masks_apo[ibin] *= self.maps[ibin]['count']
+                self.masks_apo[ibin] *= self.maps[ibin]['weighted_count']
 
     def prepare_fields(self):
         if self.fields_kw.get('purify_b', False) or self.fields_kw.get('purify_e', False):
@@ -202,6 +274,15 @@ class Shear(Observable):
             out[ibin] = [self.maps[ibin]['e1'], self.maps[ibin]['e2']]
         
         return out
+
+    def make_difference_field(self, ibin, jbin):
+        dbin = str(ibin)+'-'+str(jbin)
+
+        # Mask is intersection of both masks
+        mask = np.logical_and((self.masks[ibin]>0.), (self.masks[jbin]>0.)).astype(float)
+        mask_apo = nmt.mask_apodization(mask, aposize=self.aposize, apotype=self.apotype)
+
+        self.fields[dbin] = nmt.NmtField(mask_apo, [self.maps[ibin]['e1']-self.maps[jbin]['e1'], self.maps[ibin]['e2']-self.maps[jbin]['e2']], **self.fields_kw)
 
     # def make_fields(self, hm, include_templates=True):
     #     if hm.purify_b or hm.purify_e:
@@ -222,7 +303,7 @@ class Shear(Observable):
         bool_mask = (self.maps[ibin]['count'] > 0.)
         self.get_ipix()
 
-        e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
+        e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.cats[ibin]['weight'], self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['weighted_count'])
 
         return [e1_map, e2_map]
     
@@ -425,7 +506,6 @@ class Shear(Observable):
             kappa[ibin]['E'][np.logical_not(self.masks[ibin].astype(bool))] = hp.UNSEEN
             kappa[ibin]['B'][np.logical_not(self.masks[ibin].astype(bool))] = hp.UNSEEN
 
-
         if return_alms:
             return kappa, kappa_alms
         else:
@@ -433,7 +513,20 @@ class Shear(Observable):
 
 
 @numba.jit(nopython=True, parallel=True)
-def _randrot_maps_sub(cat_e1, cat_e2, ipix, npix):
+def random_rotation(e1_in, e2_in):
+    n = len(e1_in)
+    e1_out = np.zeros(n)
+    e2_out = np.zeros(n)
+    for i in numba.prange(n):
+        rot_angle = random.random() * TWOPI
+        cos = np.cos(rot_angle)
+        sin = np.sin(rot_angle)
+        e1_out[i] = + e1_in[i] * cos + e2_in[i] * sin
+        e2_out[i] = - e1_in[i] * sin + e2_in[i] * cos
+    return e1_out, e2_out
+
+@numba.jit(nopython=True, parallel=True)
+def _randrot_maps_sub(cat_e1, cat_e2, w, ipix, npix):
     n = len(cat_e1)
     e1_map = np.zeros(npix)
     e2_map = np.zeros(npix)
@@ -441,16 +534,20 @@ def _randrot_maps_sub(cat_e1, cat_e2, ipix, npix):
         rot_angle = random.random() * TWOPI
         cos = np.cos(rot_angle)
         sin = np.sin(rot_angle)
-        e1_map[ipix[i]] += + cat_e1[i] * cos + cat_e2[i] * sin
-        e2_map[ipix[i]] += - cat_e1[i] * sin + cat_e2[i] * cos
+        if w is None:
+            e1_map[ipix[i]] += + cat_e1[i] * cos + cat_e2[i] * sin
+            e2_map[ipix[i]] += - cat_e1[i] * sin + cat_e2[i] * cos
+        else:
+            e1_map[ipix[i]] += w[i] * (+ cat_e1[i] * cos + cat_e2[i] * sin)
+            e2_map[ipix[i]] += w[i] * (- cat_e1[i] * sin + cat_e2[i] * cos)
     
     return e1_map, e2_map
 
-def _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count):
-    e1_map, e2_map = _randrot_maps_sub(cat_e1, cat_e2, ipix, npix)
+def _randrot_maps(cat_e1, cat_e2, w, ipix, npix, bool_mask, weighted_count):
+    e1_map, e2_map = _randrot_maps_sub(cat_e1, cat_e2, w, ipix, npix)
 
-    e1_map[bool_mask] /= count[bool_mask]
-    e2_map[bool_mask] /= count[bool_mask]
+    e1_map[bool_mask] /= weighted_count[bool_mask]
+    e2_map[bool_mask] /= weighted_count[bool_mask]
 
     return e1_map, e2_map
 

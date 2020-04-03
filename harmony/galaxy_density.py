@@ -1,6 +1,13 @@
-from .observable import *
+from .observable import Observable
+from .utils import hpunseen2zero
 import numba
-
+import twopoint
+from astropy.io import fits
+import os
+import healpy as hp
+import twopoint
+import numpy as np
+import castor as ca
 
 class Galaxy(Observable):
     def __init__(self, config, nside, mode, nzbins, mask_mode, data_dir='../data', mask_dir='../masks', get_count_weights_from=None, dry_run=False, density_convention=2, completeness_cut=0.8, *args, **kwargs):
@@ -126,13 +133,20 @@ class Galaxy(Observable):
     #         comp[comp == hp.UNSEEN] = 0.0
     #         self.maps[ibin]['completeness'] = comp
 
-    def make_maps(self, save=True):
+    def make_maps(self, save=True, rotator=None):
         for ibin in self.prog(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
 
+            if rotator is None:
+                ra = cat['ra']
+                dec = cat['dec']
+            else:
+                theta, phi = rotator(ca.cosmo.radec2thetaphi(cat['ra'], cat['dec']))
+                ra, dec = ca.cosmo.thetaphi2radec(theta, phi)
+
             # get_count_weights_from in [None, 'mask', 'catalog']
             if self.get_count_weights_from is None:
-                _, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'], None, self.nside,
+                _, count, _ = ca.cosmo.make_healpix_map(ra, dec, None, self.nside,
                                             mask=None,
                                             weight=None,
                                             fill_UNSEEN=False, return_extra=False)
@@ -141,7 +155,7 @@ class Galaxy(Observable):
 
             elif self.get_count_weights_from=='mask':
                 cat = self.cats[ibin]
-                ipix = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+                ipix = hp.ang2pix(self.nside, (90.-dec)*np.pi/180.0, ra*np.pi/180.0)
                 weights = cat['weights_map'][ipix]
                 w = weights>0.
                 count_w, count, _ = ca.cosmo.make_healpix_map(None, None,
@@ -153,7 +167,7 @@ class Galaxy(Observable):
                 density = ca.cosmo.count2density(count_w[0], mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'], density_convention=self.density_convention)
 
             else: #self.get_count_weights_from=='catalog'
-                count_w, count, _ = ca.cosmo.make_healpix_map(cat['ra'], cat['dec'],
+                count_w, count, _ = ca.cosmo.make_healpix_map(ra, dec,
                                             [np.ones_like(cat['dec'])], self.nside,
                                             mask=None,
                                             weight=[cat['weight']],
@@ -255,7 +269,7 @@ class Galaxy(Observable):
         titles = {}
         ylabels = {}
 
-        idx_EB = [0, 1, 3]
+        # idx_EB = [0, 1, 3]
 
         for i, zbin in enumerate(self.zbins):
             k = (0,i)

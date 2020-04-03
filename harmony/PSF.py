@@ -1,5 +1,7 @@
-from .observable import *
+from .observable import Observable
 from .galaxy_shear import Shear
+from astropy.io import fits
+import healpy as hp
 
 class PSF(Shear):
     def __init__(self, config, nside, mask_mode, psf_filepath, include_obs=False, include_w=False, *args, **kwargs):
