@@ -26,6 +26,7 @@ class Observable(object):
 
         # Field options
         self.fields_kw = fields_kw # {}
+        # self.fields_kw = {}
         # self.fields_kw['templates'] = None
         # self.fields_kw['beam'] = kwargs.get('beam', None)
         # self.fields_kw['purify_e'] = kwargs.get('purify_e', False)
