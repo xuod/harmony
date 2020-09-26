@@ -91,6 +91,22 @@ class Observable(object):
             for name in self.map_names:
                 self.maps[i][name] = None
 
+    def compute_ipix(self): 
+        self.ipix = {}
+        for ibin in self.prog(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
+            cat = self.cats[ibin]
+            self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
+    
+    def set_ipix(self, ipixs):
+        self.ipix = {}
+        for ibin, ipix in zip(self.zbins, ipixs):
+            self.ipix[ibin] = ipix
+    
+    def get_ipix(self):
+        if not hasattr(self, 'ipix'):
+            self.compute_ipix()
+        return self.ipix
+    
     def make_maps(self):
         raise NotImplementedError
 
@@ -108,9 +124,9 @@ class Observable(object):
             map_names = self.map_names
         for ibin in self.prog(self.zbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
-            self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, 'mask', self.config.name, self.mode, self.nside, ibin)), verbose=False)
+            self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, 'mask', self.config.name, self.mode, self.nside, ibin)), verbose=False, dtype=np.float64)
             for map_name in map_names:
-                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), verbose=False)
+                self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), verbose=False, dtype=np.float64)
 
     def plot_maps(self, subplots=True, show_masks=True, return_fig=False, **kwargs):
         make_directory(self.config.path_figures+'/'+self.name)
@@ -243,7 +259,7 @@ class Observable(object):
 
     def load_template(self, template_name, template_filename):
         self._check_init_templates()
-        self.templates_dir[template_name] =  hp.read_map(template_filename, verbose=False)
+        self.templates_dir[template_name] =  hp.read_map(template_filename, verbose=False, dtype=np.float64)
 
     def load_all_templates_from_dir(self, templates_dir):
         self._check_init_templates()
@@ -252,7 +268,7 @@ class Observable(object):
         template_names.sort()
         for filename in self.prog(template_names, desc='{}.load_all_templates_from_dir'.format(self.obs_name)):
             # try:
-                temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False)
+                temp = hp.read_map(os.path.join(templates_dir, filename), verbose=False, dtype=np.float64)
                 self.templates_dir[filename] = temp
             # except:
             #     print("Could not read {}".format(os.path.join(templates_dir, filename)))
@@ -279,7 +295,7 @@ class Observable(object):
         for band in self.bands:
             for key, name in self.syst.items():
                 tempname = 'y3a2_{}_o.4096_t.32768_{}._nside{}.fits'.format(band, name, self.nside)
-                temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False)
+                temp = hp.read_map(os.path.join(templates_dir, tempname), verbose=False, dtype=np.float64)
                 self.templates_dir['%s [%s band]'%(key, band)] = temp
                 # self.templates.append(temp)
 

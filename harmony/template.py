@@ -11,8 +11,8 @@ class Template(Observable):
     def add_maps(self, ibin, map=None, mask=None):
         if isinstance(map, str): #then it's a file name
             assert isinstance(mask, str)
-            self.maps[ibin][self.map_name] = hp.ud_grade(hp.read_map(map), nside_out=self.nside)
-            self.masks[ibin] = hp.ud_grade(hp.read_map(mask), nside_out=self.nside)
+            self.maps[ibin][self.map_name] = hp.ud_grade(hp.read_map(map, dtype=np.float64), nside_out=self.nside)
+            self.masks[ibin] = hp.ud_grade(hp.read_map(mask, dtype=np.float64), nside_out=self.nside)
         else:
             self.maps[ibin][self.map_name] = hp.ud_grade(map, nside_out=self.nside)
             self.masks[ibin] = hp.ud_grade(mask, nside_out=self.nside)

@@ -178,6 +178,24 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
+    def init_catalog(self, ibin, ra, dec, e1, e2, weight=None):
+        if ibin in self.cats.keys():
+            print("[init_catalog] Replacing catalog {}".format(ibin))
+        self.cats[ibin] = {}
+
+        assert len(ra)==len(dec)==len(e1)==len(e2)
+        self.cats[ibin]['ra'] = ra
+        self.cats[ibin]['dec'] = dec
+        self.cats[ibin]['e1'] = e1
+        self.cats[ibin]['e2'] = e2
+
+        if weight is None:
+            self.cats[ibin]['weight'] = np.ones(len(ra))
+        else:
+            self.cats[ibin]['weight'] = weight
+
+
+
     # def _init_flask(self, isim, cookie):
     #     for ibin in self.prog(self.zbins):
     #         filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
@@ -367,22 +385,6 @@ class Shear(Observable):
 
         df = pd.DataFrame(index=self.zbins, data=info)
         return df
-
-    def compute_ipix(self): 
-        self.ipix = {}
-        for ibin in self.prog(self.zbins, desc='{}.compute_ipix'.format(self.obs_name)):
-            cat = self.cats[ibin]
-            self.ipix[ibin] = hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-    
-    def set_ipix(self, ipixs):
-        self.ipix = {}
-        for ibin, ipix in zip(self.zbins, ipixs):
-            self.ipix[ibin] = ipix
-    
-    def get_ipix(self):
-        if not hasattr(self, 'ipix'):
-            self.compute_ipix()
-        return self.ipix
 
     # # @profile
     # def _compute_random_auto_cls(self, hm, ibin, nrandom):

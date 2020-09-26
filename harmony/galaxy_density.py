@@ -65,9 +65,9 @@ class Galaxy(Observable):
                 self.cats[ibin]['weight'] = temp['weight']
 
             # Loading weights and completeness map
-            comp = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False)).astype(float)
+            comp = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_comp_nside{}.fits'.format(ibin, self.nside)), verbose=False, dtype=np.float64))
             if load_weights_maps:
-                weights = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False)).astype(float)
+                weights = hpunseen2zero(hp.read_map(os.path.join(self.data_dir, 'redmagic_bin{}_binary_nside{}.fits'.format(ibin, self.nside)), verbose=False, dtype=np.float64))
             else:
                 weights = np.ones_like(comp)
 
@@ -103,6 +103,27 @@ class Galaxy(Observable):
 
             if self.get_count_weights_from=='mask':
                 self.cats[ibin]['weights_map'] = weights
+
+    def init_catalog(self, ibin, ra, dec, mask, completeness=None, weight=None):
+        if ibin in self.cats.keys():
+            print("[init_catalog] Replacing catalog {}".format(ibin))
+        self.cats[ibin] = {}
+
+        assert len(ra)==len(dec)
+        self.cats[ibin]['ra'] = ra
+        self.cats[ibin]['dec'] = dec
+        if weight is None:
+            self.cats[ibin]['weight'] = np.ones(len(ra))
+        else:
+            self.cats[ibin]['weight'] = weight
+
+        self.masks[ibin] = mask
+        if completeness is None:
+            self.maps[ibin]['completeness'] = (mask>0.).astype(float)
+        else:
+            self.maps[ibin]['completeness'] = completeness
+
+
 
     # def init_redmagic_Y1(self, nzbins):
     #     basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
