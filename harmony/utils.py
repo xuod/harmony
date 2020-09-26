@@ -49,21 +49,21 @@ def hpunseen2zero(map_in):
     map_out[map_out==hp.UNSEEN] = 0.
     return map_out
 
-def get_chi2(obs, randoms, smooth=False, return_pval=False):
-    if smooth:
-        model = GraphicalLassoCV(cv=5)
-        model.fit(randoms)
-        cov = model.covariance_
-    else:
-        cov = np.cov(randoms, rowvar=False)
-
-    def calc_chi2(x, cov, xmean=None):
+def calc_chi2(x, cov, xmean=None):
         if xmean is not None :
             y = x - xmean
         else :
             y = x
         icov = np.linalg.inv(cov)
         return np.dot(y.T, np.dot(icov, y))
+
+def get_chi2(obs, randoms, smooth=False, return_pval=False):
+    if smooth:
+        model = GraphicalLassoCV(cv=5)
+        model.fit(randoms)
+        cov = model.covariance_
+    else:
+        cov = np.cov(randoms, rowvar=False)    
 
     chi2 = calc_chi2(obs, cov, np.mean(randoms, axis=0))
     if return_pval:
@@ -72,6 +72,18 @@ def get_chi2(obs, randoms, smooth=False, return_pval=False):
     else:
         return chi2
 
+def bootstrap_chi2(nb, obs, randoms, smooth=False, return_pval=False, pbar=False):
+    nrandom = len(randoms)
+    chi2 = []
+    if pbar:
+        prog = trange
+    else:
+        prog = range
+    for _ in prog(nb):
+        w = np.random.choice(nrandom, size=nrandom, replace=True)
+        chi2.append(get_chi2(obs, randoms[w], smooth=smooth))
+    chi2 = np.array(chi2)
+    return get_chi2(obs, randoms, smooth=smooth, return_pval=return_pval), np.sqrt(np.var(chi2, ddof=1.))
 
 # def log_ell_bins(lmin, lmax, n_ell_bins):
 #     ell = np.arange(lmin,lmax+1)
@@ -194,3 +206,18 @@ def load_cosmosis_cl(dir_path, ell_interp=None, starts_at_1=True, imax=10, symme
 #         self.args = args
 #         self.kwargs = kwargs
 #         nmt.NmtField.__init__(self, *args, **kwargs)
+
+def DES_azeqview(map, **kwargs):
+    default_kwargs = {}
+    default_kwargs['rot'] = (20,-37.5,0)
+    default_kwargs['reso'] = 6
+    default_kwargs['xsize'] = 1600
+    default_kwargs['ysize'] = 900
+    default_kwargs['lamb'] = True
+
+    for k in default_kwargs.keys():
+        if k not in kwargs.keys():
+            kwargs[k] = default_kwargs[k]
+
+    hp.azeqview(map, **kwargs)
+

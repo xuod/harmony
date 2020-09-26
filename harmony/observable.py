@@ -7,14 +7,14 @@ import castor as ca
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import multiprocessing
-from .utils import *
+from .utils import prog, hpunseen2zero, make_directory, get_chi2
 import numpy as np
 import logging
 import scipy
 import twopoint
 
 class Observable(object):
-    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, aposize=0.0, apotype='C1', **fields_kw):
+    def __init__(self, config, nside, mode, nzbins, obs_name, map_names, suffix='', verbose=True, aposize=0.0, apotype='C1', **kwargs):
         self.config = config
         self.name = config.name
         self.nside = nside
@@ -24,18 +24,18 @@ class Observable(object):
         self.aposize = aposize
         self.apotype = apotype
 
-        # Field options
-        self.fields_kw = fields_kw # {}
-        # self.fields_kw = {}
-        # self.fields_kw['templates'] = None
-        # self.fields_kw['beam'] = kwargs.get('beam', None)
-        # self.fields_kw['purify_e'] = kwargs.get('purify_e', False)
-        # self.fields_kw['purify_b'] = kwargs.get('purify_b', False)
-        # self.fields_kw['n_iter_mask_purify'] = kwargs.get('n_iter_mask_purify', 3)
-        # self.fields_kw['tol_pinv'] = kwargs.get('tol_pinv', 1e-10)
-        # self.fields_kw['wcs'] = kwargs.get('wcs', None)
-        # self.fields_kw['n_iter'] = kwargs.get('n_iter', 3)
-        # self.fields_kw['lmax_sht'] = kwargs.get('lmax_sht', -1)
+        # nmt.NmtField options
+        self.fields_kw = {}
+        self.fields_kw['templates'] = kwargs.get('templates', None)
+        self.fields_kw['beam'] = kwargs.get('beam', None)
+        self.fields_kw['purify_e'] = kwargs.get('purify_e', False)
+        self.fields_kw['purify_b'] = kwargs.get('purify_b', False)
+        self.fields_kw['n_iter_mask_purify'] = kwargs.get('n_iter_mask_purify', 3)
+        self.fields_kw['tol_pinv'] = kwargs.get('tol_pinv', 1e-10)
+        self.fields_kw['wcs'] = kwargs.get('wcs', None)
+        self.fields_kw['n_iter'] = kwargs.get('n_iter', 3)
+        self.fields_kw['lmax_sht'] = kwargs.get('lmax_sht', -1)
+        self.fields_kw['masked_on_input'] = kwargs.get('masked_on_input', False)
 
         self.map_names = map_names
         self.obs_name = obs_name
@@ -102,15 +102,17 @@ class Observable(object):
             for map_name in self.map_names:
                 hp.write_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), self.maps[ibin][map_name], overwrite=True)
 
-    def load_maps(self):
+    def load_maps(self, map_names=None):
         maps_dir = os.path.join(self.config.path_maps, self.name)
+        if map_names is None:
+            map_names = self.map_names
         for ibin in self.prog(self.zbins, desc='{}.load_maps'.format(self.obs_name)):
             # self.maps[ibin] = {}
             self.masks[ibin] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, 'mask', self.config.name, self.mode, self.nside, ibin)), verbose=False)
-            for map_name in self.map_names:
+            for map_name in map_names:
                 self.maps[ibin][map_name] = hp.read_map(os.path.join(maps_dir, '{}_{}_{}_{}_nside{}_bin{}.fits'.format(self.obs_name, map_name, self.config.name, self.mode, self.nside, ibin)), verbose=False)
 
-    def plot_maps(self, subplots=True, show_masks=True, **kwargs):
+    def plot_maps(self, subplots=True, show_masks=True, return_fig=False, **kwargs):
         make_directory(self.config.path_figures+'/'+self.name)
         if subplots:
             nrow = self.nzbins
@@ -146,6 +148,9 @@ class Observable(object):
             figfile = os.path.join(self.config.path_figures, self.name, 'maps_{}_{}_nside{}_bin{}.png'.format(self.config.name, self.mode, self.nside, ibin))
             plt.savefig(figfile, dpi=300)
             plt.show()
+
+        if return_fig:
+            return fig
     
     def make_masks_apo(self):
         self.masks_apo = {}
@@ -222,7 +227,7 @@ class Observable(object):
             return None
         else:
             templates = []
-            for key, temp in self.templates_dir.items():
+            for _, temp in self.templates_dir.items():
                 templates.append(list(temp))
             # templates = np.expand_dims(np.array(templates), axis=1)
             return np.array(templates)

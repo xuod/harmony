@@ -1,4 +1,6 @@
-from .observable import *
+from .observable import Observable
+from astropy.io import fits
+import healpy as hp
 
 class Template(Observable):
     def __init__(self, config, nside, mode, nzbins, obs_name, map_name, *args, **kwargs):

@@ -7,7 +7,7 @@ import castor as ca
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import multiprocessing
-from .utils import *
+from .utils import prog, make_directory, compute_master
 from .observable import Observable
 import pickle
 import numpy as np
@@ -39,6 +39,7 @@ class Harmony(object):
             
         self.ell = self.b.get_effective_ells()
         self.cls = {}
+        self.cls['ell'] = self.ell
         self.wsp = {}
 
         self.nproc = nproc
@@ -46,6 +47,7 @@ class Harmony(object):
             self.pool = multiprocessing.Pool(nproc)
         
         make_directory(self.config.path_output+'/'+self.name)
+        make_directory(self.config.path_wsp+'/'+self.name)
 
         self.verbose = verbose
         self.prog = prog(verbose)
@@ -82,7 +84,7 @@ class Harmony(object):
             suffix = '{}_{}_{}_{}'.format(obs1, obs2, i1, i2)
         else:
             raise ValueError
-        filename = os.path.join(self.config.path_output, self.name, 'wsp_{}_nside{}_{}.bin'.format(self.config.name, self.nside, suffix))
+        filename = os.path.join(self.config.path_wsp, self.name, 'wsp_{}_nside{}_{}.bin'.format(self.config.name, self.nside, suffix))
         return filename
 
     def load_workspace(self, obs1, obs2, i1, i2):
@@ -107,12 +109,12 @@ class Harmony(object):
         else:
             raise RuntimeError("Workspace file does not exist: ", filename_bpws)
 
-    def load_all_workspaces(self, obs1, obs2=None):
-        pairs = self.get_pairs(obs1, obs2=obs2)
+    def load_all_workspaces(self, obs1, obs2=None, auto_only=False):
+        pairs = self.get_pairs(obs1, obs2=obs2, auto_only=auto_only)
         if obs2 is None:
             obs2 = obs1
 
-        for i1,i2 in self.prog(pairs, desc='Harmony.get_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+        for i1,i2 in self.prog(pairs, desc='Harmony.load_all_workspaces [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
             self.load_workspace(obs1, obs2, i1, i2)
         
     def _save_workspace(self, wsp, obs1, obs2, i1, i2, bpws_only=False):
@@ -181,28 +183,36 @@ class Harmony(object):
             bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
             return bpws
 
-    def save_cls(self):
+    def save_cls(self, ext=None):
         make_directory(self.config.path_output+'/'+self.name)
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
+        if ext is not None:
+            filename = filename.replace('.pickle', '_'+str(ext)+'.pickle')
         pickle.dump(self.cls, open(filename, mode='wb'))
 
-    def load_cls(self, print_summary=True):
+    def load_cls(self, print_summary=True, ext=None, keep_cls=True):
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
-        self.cls = pickle.load(open(filename, mode='rb'))
+        if ext is not None:
+            filename = filename.replace('.pickle', '_'+str(ext)+'.pickle')
+        loaded_cls = pickle.load(open(filename, mode='rb'))
 
-        assert np.allclose(self.ell, self.cls['ell'])
+        if keep_cls:
+            assert np.allclose(self.ell, loaded_cls['ell'])
+            self.cls = loaded_cls
 
         if print_summary:
             print("Loaded Cl's info:")
-            print('  - Multipole bins ({}) = '.format(len(self.cls['ell'])), self.cls['ell'])
-            for obs_key in self.cls.keys():
+            print('  - Multipole bins ({}) = '.format(len(loaded_cls['ell'])), loaded_cls['ell'])
+            for obs_key in loaded_cls.keys():
                 if obs_key != 'ell':
                     print("  - Observables", obs_key)
-                    for bin_key in self.cls[obs_key].keys():
+                    for bin_key in loaded_cls[obs_key].keys():
                         print("     - Redshift bins", bin_key)
-                        for tr_key, cl in self.cls[obs_key][bin_key].items():
+                        for tr_key, cl in loaded_cls[obs_key][bin_key].items():
                             print("          -", tr_key, cl.shape)
-        return self.cls
+
+        return loaded_cls
+
 
     def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None, wsp=None):
         if obs2 is None:
@@ -325,7 +335,7 @@ class Harmony(object):
                 self.cls[(obs1.obs_name, obs2.obs_name)][x] = {}
 
         if share_randoms:
-            for i in self.prog(nrandom, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
+            for _ in self.prog(nrandom, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
                 # Observable 1
                 if random_obs1:
                     fields1 = {i1:obs1.make_randomized_fields(i1, nrandom=1)[0] for i1 in pairs_i1}
