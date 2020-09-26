@@ -213,6 +213,7 @@ class Harmony(object):
 
         return loaded_cls
 
+
     def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None, wsp=None):
         if obs2 is None:
             # same_obs = True

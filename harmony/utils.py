@@ -124,6 +124,9 @@ def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None,
     # Define ell range
     ells = np.arange(lmin, lmax+1)
 
+    if lmax>3*nside:
+        warnings.warn("Warning: lmax>3*nside so multipoles will be removed after 3*snide, but lmax will be used for binning.")
+
     # Make bin limits
     if bins_ell is not None:
         warnings.warn("Warning: using provided `bins_ell` instead of computing it from `bin_func`.")
@@ -142,7 +145,8 @@ def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None,
     # Multiplicative factor
     if f_ell is not None:
         if f_ell=='pixwin':
-            f_ell = 1./hp.pixwin(nside)[lmin:lmax+1]**2
+            f_ell = np.ones(len(ells))
+            f_ell[:min(lmax+1,3*nside)-lmin] = 1./hp.pixwin(nside)[lmin:min(lmax+1,3*nside)]**2
         else:
             assert type(f_ell) == np.ndarray
             assert len(f_ell) == len(ells)
