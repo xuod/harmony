@@ -384,6 +384,9 @@ class Harmony(object):
     def compute_random_auto_cls(self, obs, nrandom=1, save_cls=None):
         self.compute_random_all_cls(obs, obs, True, True, nrandom=nrandom, share_randoms=False, auto_cls=True, save_cls=save_cls, auto_only=True)
 
+    def compute_noise_auto_cls(self, obs, save_cls=None):
+        obs.compute_noise_auto_cls(self, save_cls=save_cls)
+
     def compute_full_auto_cls(self, obs, nrandom=0, from_scratch=False, save_cls=None, save_maps=True, plot_maps=False):
         if from_scratch:
             self.cls = {}

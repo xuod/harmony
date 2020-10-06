@@ -1,5 +1,5 @@
 from .observable import Observable
-from .utils import prog, hpunseen2zero
+from .utils import prog, hpunseen2zero, compute_master
 import os, sys
 import numba
 import random
@@ -178,19 +178,28 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
-    def init_catalog(self, ibin, ra, dec, e1, e2, weight=None):
+    def init_catalog(self, ibin, ra, dec, e1, e2, ipix=None, weight=None):
         if ibin in self.cats.keys():
             print("[init_catalog] Replacing catalog {}".format(ibin))
         self.cats[ibin] = {}
 
-        assert len(ra)==len(dec)==len(e1)==len(e2)
-        self.cats[ibin]['ra'] = ra
-        self.cats[ibin]['dec'] = dec
+        if ra is None: # then use ipix
+            assert dec is None
+            assert ipix is not None
+            if not hasattr(self, 'ipix'):
+                self.ipix={}
+            self.ipix[ibin] = ipix
+        else:
+            assert len(ra)==len(dec)==len(e1)==len(e2)
+            assert ipix is NotImplemented
+            self.cats[ibin]['ra'] = ra
+            self.cats[ibin]['dec'] = dec
+
         self.cats[ibin]['e1'] = e1
         self.cats[ibin]['e2'] = e2
 
         if weight is None:
-            self.cats[ibin]['weight'] = np.ones(len(ra))
+            self.cats[ibin]['weight'] = np.ones(len(e1))
         else:
             self.cats[ibin]['weight'] = weight
 
@@ -512,6 +521,29 @@ class Shear(Observable):
             return kappa, kappa_alms
         else:
             return kappa
+
+    def compute_noise_auto_cls(self, hm, save_cls=None):
+        for ibin in self.prog(self.zbins, desc='{}.compute_variance_maps'.format(self.obs_name)):
+            weight = self.cats[ibin]['weight']
+            weight *= len(weight) / np.sum(weight) # normaize weight to number of galaxies
+            var_map = ca.cosmo.make_healpix_map(None, None,
+                                            quantity=[0.5*(self.cats[ibin]['e1']**2 + self.cats[ibin]['e2']**2)],
+                                            nside=self.nside, fill_UNSEEN=False, # put zeros outside of mask
+                                            mask=None, weight=weight**2, mode='sum', # sum w^2 * e^2
+                                            ipix=self.ipix[ibin], return_w_maps=True,
+                                            return_extra=False)[0][0]
+            var = np.mean(var_map) * hp.nside2pixarea(self.nside)
+
+            cl_in = np.zeros((4,hm.b.lmax+1))
+            cl_in[0,:] = var
+            cl_in[3,:] = var
+
+            wsp = hm.get_workspace(self, self, ibin, ibin)
+            clr = wsp.decouple_cell(cl_in)
+            hm._add_to_random(self, self, ibin, ibin, clr[None,:,:])
+
+        if save_cls or hm.do_save_cls:
+            hm.save_cls()
 
 
 @numba.jit(nopython=True, parallel=True)

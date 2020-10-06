@@ -8,6 +8,7 @@ import castor as ca
 import warnings
 from collections.abc import Iterable
 from tqdm.auto import tqdm, trange
+from functools import partial
 
 try:
     FileNotFoundError
@@ -167,6 +168,9 @@ def make_nmtbin_logspaced(nside, lmin, lmax, n_ell_bins, f_ell=None, **kwargs):
 
 def make_nmtbin_linspaced(nside, lmin, lmax, n_ell_bins, f_ell=None, **kwargs):
     return make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=f_ell, **kwargs)
+
+def make_nmtbin_powspaced(nside, lmin, lmax, n_ell_bins, power, f_ell=None, **kwargs):
+    return make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=partial(ca.maths.powspace, power=power), f_ell=f_ell, **kwargs)
 
 def load_cosmosis_cl(dir_path, ell_interp=None, starts_at_1=True, imax=10, symmetrize=False):
     offset = int(starts_at_1)
