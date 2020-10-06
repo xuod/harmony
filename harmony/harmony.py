@@ -18,17 +18,12 @@ import numpy as np
 
 class Harmony(object):
     def __init__(self, config, nside, b=None, nlb=None, nproc=0, save_cls=True, save_wsp=True, verbose=True):
-        #, purify_e=False, purify_b=False):
         self.config = config
         self.name = config.name
         self.nside = nside
 
         self.do_save_cls = save_cls
         self.do_save_wsp = save_wsp
-
-        # self.purify_e = purify_e
-        # self.purify_b = purify_b
-        # self.fields_kw = {'purify_e':self.purify_e, 'purify_b':self.purify_b}
 
         if b is None:
             assert nlb is not None
@@ -75,7 +70,11 @@ class Harmony(object):
         if key not in self.cls.keys():
             self.cls[key] = {}
         if key not in self.wsp.keys():
-            self.wsp[key] = {}            
+            self.wsp[key] = {}    
+
+
+    #########################
+    # Manage wsp and cls        
     
     def get_workspace_filename(self, obs1, obs2, i1, i2):
         if isinstance(obs1, Observable) and isinstance(obs2, Observable):
@@ -169,12 +168,6 @@ class Harmony(object):
         else:
             raise KeyError
 
-    # def get_or_prepare_workspace(self, obs1, obs2, i1, i2, **kwargs):
-    #     try:
-    #         return self.get_workspace(obs1, obs2, i1, i2)
-    #     except:
-    #         return self.prepare_workspace(obs1, obs2, i1, i2, **kwargs)
-
     def get_workspace_bpws(self, obs1, obs2, i1, i2):
         try:
             wsp = self.get_workspace(obs1, obs2, i1, i2)
@@ -213,6 +206,8 @@ class Harmony(object):
 
         return loaded_cls
 
+    #########################
+    # Compute cls   
 
     def compute_cls(self, obs1, i1, obs2=None, i2=None, save_cls=None, wsp=None):
         if obs2 is None:
@@ -304,7 +299,6 @@ class Harmony(object):
         if save_cls or self.do_save_cls:
             self.save_cls()
         
-        # return self.cls[(obs1.obs_name, obs2.obs_name)][(i1,i2)]
         return np.array(_cls)
 
 
@@ -366,21 +360,6 @@ class Harmony(object):
             for i1,i2 in self.prog(pairs, desc='Harmony.compute_random_all_cls [obs1:{}, obs2={}]'.format(obs1.obs_name, obs2.obs_name)):
                 self.compute_random_cls(obs1, i1, obs2, i2, random_obs1, random_obs2, nrandom, auto_cls=auto_cls, save_cls=save_cls)
 
-    # def compute_random_auto_cls(self, obs, ibins=None, nrandom=1, save_cls=None):
-    #     if ibins is None:
-    #         ibins = obs.zbins
-    #     else:
-    #         ibins = np.array(ibins)
-    #     for ibin in self.prog(ibins, desc='Harmony.compute_random_auto_cls [obs:{}]'.format(obs.obs_name)):
-    #         clr = obs._compute_random_auto_cls(self, ibin, nrandom)
-    #         if 'random' in self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)].keys():
-    #             # print("Adding to existing randoms.", self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'].shape, clr.shape)
-    #             self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = np.concatenate([self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'], clr])
-    #         else:
-    #             self.cls[(obs.obs_name, obs.obs_name)][(ibin,ibin)]['random'] = clr
-    #         if save_cls or self.do_save_cls:
-    #             self.save_cls()
-
     def compute_random_auto_cls(self, obs, nrandom=1, save_cls=None):
         self.compute_random_all_cls(obs, obs, True, True, nrandom=nrandom, share_randoms=False, auto_cls=True, save_cls=save_cls, auto_only=True)
 
@@ -412,6 +391,9 @@ class Harmony(object):
         if nrandom>0:
             self.compute_random_auto_cls(obs, nrandom=nrandom, save_cls=save_cls)
 
+
+    #########################
+    # Create data fits files   
 
     def bin_cl_theory(self, cl_in, obs1, obs2, i1, i2, fix_pixwin=False, bpws=None):
         if bpws is None:
@@ -502,7 +484,6 @@ class Harmony(object):
                     NL[i,:lowest_ell] = NL[i,lowest_ell]
                 res += NL
             return res
-
 
         cw=nmt.NmtCovarianceWorkspace()
 

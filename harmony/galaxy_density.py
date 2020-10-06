@@ -42,12 +42,6 @@ class Galaxy(Observable):
         if not dry_run:
             if mode=='redmagic_Y3':
                 self.init_redmagic_Y3(self.nzbins, load_catalog_weights=load_catalog_weights, load_weights_maps=load_weights_maps)
-            # elif mode=='maglim_Y3':
-            #     self.init_maglim_Y3(self.nzbins)
-            # elif mode=='redmagic_Y1':
-            #     self.init_redmagic_Y1(self.nzbins)
-            # elif mode=='BAO_Y1':
-            #     self.init_BAO_Y1(self.nzbins, use_weights)
             else:
                 raise NotImplementedError
 
@@ -124,36 +118,6 @@ class Galaxy(Observable):
             self.maps[ibin]['completeness'] = completeness
 
 
-
-    # def init_redmagic_Y1(self, nzbins):
-    #     basename = '5bins_hidens_hilum_higherlum_jointmask_0.15-0.9_magauto_mof_combo_removedupes_spt_fwhmi_exptimei_cut_badpix_mask'
-
-    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_redmagic_Y1'):
-    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-    #         self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
-    #         comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRACGOOD_nside{}.fits'.format(self.nside)), verbose=False)
-    #         comp[comp == hp.UNSEEN] = 0.0
-    #         self.maps[ibin]['completeness'] = comp
-    
-    # def init_BAO_Y1(self, nzbins, use_weights):
-    #     basename = 'DES_Y1A1_LSSBAO_v1.0_MASK_HPIX4096RING'
-
-    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_BAO_Y1'):
-    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'redmagic_bin{}.fits'.format(ibin)))[1].data
-    #         self.masks[ibin] = hp.read_map(os.path.join(self.mask_dir, basename+'_binary_nside{}.fits'.format(self.nside)), verbose=False)
-    #         comp = hp.read_map(os.path.join(self.mask_dir, basename+'_FRAC_nside{}.fits'.format(self.nside)), verbose=False)
-    #         comp[comp == hp.UNSEEN] = 0.0
-    #         self.maps[ibin]['completeness'] = comp
-    #     self.has_weights = use_weights
-
-    # def init_maglim_Y3(self, nzbins):
-    #     for ibin in self.prog(self.zbins, desc='Galaxy.init_maglim_Y3'):
-    #         self.cats[ibin] = fits.open(os.path.join(self.data_dir, 'maglim_bin{}.fits'.format(ibin+1)))[1].data
-    #         self.masks[ibin] = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_binary_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
-    #         comp = hp.read_map(os.path.join(self.data_dir, 'maglim_bin{}_comp_nside{}.fits'.format(ibin+1, self.nside)), verbose=False)
-    #         comp[comp == hp.UNSEEN] = 0.0
-    #         self.maps[ibin]['completeness'] = comp
-
     def make_maps(self, save=True, rotator=None):
         for ibin in self.prog(self.zbins, desc='Galaxy.make_maps'):
             cat = self.cats[ibin]
@@ -202,10 +166,6 @@ class Galaxy(Observable):
         if save:
             self.save_maps()
 
-    # def make_fields(self, hm, include_templates=True):
-    #     for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
-    #         self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin]['density']], templates=self._get_templates_array(), purify_e=hm.purify_e, purify_b=hm.purify_b)
-
     def prepare_fields(self):
         out = {}
         for ibin in self.zbins:
@@ -248,42 +208,11 @@ class Galaxy(Observable):
         return df
     
     def make_randomized_maps(self, ibin):
-        # npix = hp.nside2npix(self.nside)
-        # mask_apo = self.masks_apo[ibin]
-
         Nobj = len(self.cats[ibin]['ra'])
-
-        # completeness = self.maps[ibin]['completeness']
-        # print(completeness.min(), completeness.max(), np.all(np.isfinite(completeness)))
         count = random_count(self.maps[ibin]['completeness'], Nobj)
-        # import pdb; pdb.set_trace()
         density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=self.maps[ibin]['completeness'])
 
         return [density]
-
-    # def _compute_random_auto_cls(self, hm, ibin, nrandom, use_completeness=False):
-    #     npix = hp.nside2npix(self.nside)
-
-    #     mask_apo = self.masks_apo[ibin]
-
-    #     wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp) #wsp = nmt.NmtWorkspace()
-
-    #     Nobj = len(self.cats[ibin])
-
-    #     _cls = []
-
-    #     if use_completeness:
-    #         random_comp = self.masks[ibin].astype(float)
-    #     else:
-    #         random_comp = self.maps[ibin]['completeness']
-
-    #     for i in self.prog(nrandom, desc='Galaxy.compute_cls [bin {}]'.format(ibin)):
-    #         count = random_count(random_comp, Nobj)
-    #         density = ca.cosmo.count2density(count, mask=self.masks[ibin], completeness=random_comp)
-    #         field_r = nmt.NmtField(mask_apo, [density], templates=None, purify_e=hm.purify_e, purify_b=hm.purify_b)
-    #         _cls.append(compute_master(field_r, field_r, wsp))
-
-    #     return np.array(_cls)
 
     def plot_auto_cls(self, hm, remove_Nl=False, **kwargs):
         cls = {}
@@ -306,9 +235,6 @@ class Galaxy(Observable):
 
         return self.plot_cls(hm, cls, 1, self.nzbins, figname='auto', titles=titles, ylabels=ylabels, **kwargs)
 
-
-# def random_pos(completeness, nobj):
-#     return np.random.choice(len(completeness), size=nobj, replace=True, p=completeness*1./np.sum(completeness))
 
 # @numba.jit(nopython=True, parallel=True)
 def random_count(completeness, nobj):

@@ -23,7 +23,4 @@ class Template(Observable):
             out[ibin] = [self.maps[ibin][self.map_name]]
         return out
 
-    # def make_fields(self, hm, include_templates=True):
-    #     for ibin in tqdm(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
-    #         self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin], [self.maps[ibin][self.map_name]], beam=self.beam, **hm.fields_kw)
 

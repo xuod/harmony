@@ -57,64 +57,48 @@ class Shear(Observable):
             else:
                 raise ValueError("Given `mode` argument ({}) is not correct.".format(mode))
 
-    # def _init_buzzard(self):
-    #     # self.zlims = [(.2, .43), (.43,.63), (.64,.9), (.9, 1.3), (.2,1.3)][:self.nzbins]
-    #     for ibin in self.prog(self.zbins):
-    #         filename = os.path.join(self.data_dir, "Niall_WL_y3_bin_{}.fits".format(ibin+1))
-    #         _cat = fits.open(filename)[1].data
+    def init_catalog(self, ibin, ra, dec, e1, e2, ipix=None, weight=None):
+        if ibin in self.cats.keys():
+            print("[init_catalog] Replacing catalog {}".format(ibin))
+        self.cats[ibin] = {}
 
-    #         cat = {}
-    #         cat['ra'] = _cat['RA']
-    #         cat['dec'] = _cat['DEC']
+        if ra is None: # then use ipix
+            assert dec is None
+            assert ipix is not None
+            if not hasattr(self, 'ipix'):
+                self.ipix={}
+            self.ipix[ibin] = ipix
+        else:
+            assert len(ra)==len(dec)==len(e1)==len(e2)
+            assert ipix is NotImplemented
+            self.cats[ibin]['ra'] = ra
+            self.cats[ibin]['dec'] = dec
 
-    #         if self.mode == 'buzzard':
-    #             cat['e1'] = _cat['E1']
-    #             cat['e2'] = _cat['E2']
-    #         if self.mode == 'buzzard_truth':
-    #             cat['e1'] = _cat['G1']
-    #             cat['e2'] = _cat['G2']
+        self.cats[ibin]['e1'] = e1
+        self.cats[ibin]['e2'] = e2
 
-    #         self.cats[ibin] = cat
-
+        if weight is None:
+            self.cats[ibin]['weight'] = np.ones(len(e1))
+        else:
+            self.cats[ibin]['weight'] = weight
+            
     def _init_data(self, use_weights=True):
         for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
-            cat = {}
-            cat['ra'] = _cat['RA']
-            cat['dec'] = _cat['DEC']
+            self.init_catalog(ibin, _cat['RA'], _cat['DEC'], _cat['g1'], -1.0 * _cat['g2'], 
+                              ipix=None, weight=_cat['weight'].astype(float) if use_weights else None)
 
-            cat['e1'] = _cat['g1']
-            cat['e2'] = -1.0 * _cat['g2']
-
-            if use_weights:
-                    cat['weight'] = _cat['weight'].astype(float)
-            else:
-                # print("Data file does not have weight column")
-                cat['weight'] = None
-
-            self.cats[ibin] = cat
 
     def _init_mock(self, use_weights=True):
         for ibin in self.prog(self.zbins):
             filename = os.path.join(self.data_dir, "source_s{}.fits".format(ibin+1))
             _cat = fits.open(filename)[1].data
 
-            cat = {}
-            cat['ra'] = _cat['RA']
-            cat['dec'] = _cat['DEC']
+            self.init_catalog(ibin, _cat['RA'], _cat['DEC'], _cat['e1'], _cat['e2'], 
+                              ipix=None, weight=_cat['weight'].astype(float) if use_weights else None)
 
-            cat['e1'] = _cat['e1']
-            cat['e2'] = _cat['e2']
-
-            if use_weights:
-                    cat['weight'] = _cat['weight'].astype(float)
-            else:
-                # print("Data file does not have weight column")
-                cat['weight'] = None
-
-            self.cats[ibin] = cat
 
     def _init_full(self, filename_template, dict, flip_e2, single_file=False, ext_template='zbin_{}', ipix_instead_of_radec=False, use_weights=True):
         if single_file:
@@ -178,46 +162,6 @@ class Shear(Observable):
 
             self.cats[ibin] = cat
 
-    def init_catalog(self, ibin, ra, dec, e1, e2, ipix=None, weight=None):
-        if ibin in self.cats.keys():
-            print("[init_catalog] Replacing catalog {}".format(ibin))
-        self.cats[ibin] = {}
-
-        if ra is None: # then use ipix
-            assert dec is None
-            assert ipix is not None
-            if not hasattr(self, 'ipix'):
-                self.ipix={}
-            self.ipix[ibin] = ipix
-        else:
-            assert len(ra)==len(dec)==len(e1)==len(e2)
-            assert ipix is NotImplemented
-            self.cats[ibin]['ra'] = ra
-            self.cats[ibin]['dec'] = dec
-
-        self.cats[ibin]['e1'] = e1
-        self.cats[ibin]['e2'] = e2
-
-        if weight is None:
-            self.cats[ibin]['weight'] = np.ones(len(e1))
-        else:
-            self.cats[ibin]['weight'] = weight
-
-
-
-    # def _init_flask(self, isim, cookie):
-    #     for ibin in self.prog(self.zbins):
-    #         filename = os.path.join(self.data_dir, 'src-cat_s{}_z{}_ck{}.fits'.format(isim, ibin+1, cookie))
-    #         _cat = fits.open(filename)[1].data
-
-    #         cat = {}
-    #         cat['ra'] = _cat['RA']
-    #         cat['dec'] = _cat['DEC']
-
-    #         cat['e1'] = _cat['GAMMA1']
-    #         cat['e2'] = -1.0 * _cat['GAMMA2']
-
-    #         self.cats[ibin] = cat   
 
     def split_bin(self, ibin, nsplits, remove=False):
         full_cat = self.cats[ibin]
@@ -311,21 +255,6 @@ class Shear(Observable):
 
         self.fields[dbin] = nmt.NmtField(mask_apo, [self.maps[ibin]['e1']-self.maps[jbin]['e1'], self.maps[ibin]['e2']-self.maps[jbin]['e2']], **self.fields_kw)
 
-    # def make_fields(self, hm, include_templates=True):
-    #     if hm.purify_b or hm.purify_e:
-    #         print("WARNING: E/B-mode purification requires unseen pixels to be set to zero. Replacing...")
-    #         for ibin in self.zbins:
-    #             self.maps[ibin]['e1'] = hpunseen2zero(self.maps[ibin]['e1'])
-    #             self.maps[ibin]['e2'] = hpunseen2zero(self.maps[ibin]['e2'])
-        
-    #     templates = self._get_templates_array() if include_templates else None
-
-    #     for ibin in self.prog(self.zbins, desc='{}.make_fields'.format(self.obs_name)):
-    #         self.fields[ibin] = nmt.NmtField(self.masks_apo[ibin],
-    #                                          [self.maps[ibin]['e1'], self.maps[ibin]['e2']],
-    #                                          templates=templates,
-    #                                          **hm.fields_kw)
-
     def make_randomized_maps(self, ibin):
         bool_mask = (self.maps[ibin]['count'] > 0.)
         self.get_ipix()
@@ -333,29 +262,7 @@ class Shear(Observable):
         e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.cats[ibin]['weight'], self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['weighted_count'])
 
         return [e1_map, e2_map]
-    
-    # def make_randomized_fields(self, hm, ibin, nrandom=1, include_templates=True):
-    #     bool_mask = (self.maps[ibin]['count'] > 0.)
-    #     self.get_ipix()
-    #     fields = []
 
-    #     templates = self._get_templates_array() if include_templates else None
-
-    #     # remove progress bar for only one field
-    #     if nrandom == 1:
-    #         prog = [0]
-    #     else:
-    #         prog = self.prog(nrandom)
-
-    #     for _ in prog:
-    #         e1_map, e2_map = _randrot_maps(self.cats[ibin]['e1'].astype(float), self.cats[ibin]['e2'].astype(float), self.ipix[ibin], self.npix, bool_mask, self.maps[ibin]['count'])
-    #         field =  nmt.NmtField(self.masks_apo[ibin],
-    #                               [e1_map, e2_map],
-    #                               templates=templates,
-    #                               **hm.fields_kw)
-    #         fields.append(field)
-
-    #     return fields
 
     def _get_info(self):
         import pandas as pd
@@ -394,37 +301,6 @@ class Shear(Observable):
 
         df = pd.DataFrame(index=self.zbins, data=info)
         return df
-
-    # # @profile
-    # def _compute_random_auto_cls(self, hm, ibin, nrandom):
-    #     npix = self.npix
-    #     cat = self.cats[ibin]
-    #     mask_apo = self.masks_apo[ibin]
-
-    #     wsp = hm.get_workspace(self, self, ibin, ibin)#, save_wsp=save_wsp)
-    #     wsp_filename = hm.get_workspace_filename(self, self, ibin, ibin)
-
-    #     # Nobj = len(cat)
-    #     self.get_ipix()
-
-    #     ipix = self.ipix[ibin] #hp.ang2pix(self.nside, (90-cat['dec'])*np.pi/180.0, cat['ra']*np.pi/180.0)
-    #     count = self.maps[ibin]['count']
-    #     bool_mask = (count > 0.)
-
-    #     _cls = []
-
-    #     if hm.nproc==0:
-    #         for _ in self.prog(nrandom, desc='{}._compute_random_auto_cls [bin {}]'.format(self.obs_name, ibin)):
-    #             _cls.append(_randrot_cls(cat['e1'].astype(float), cat['e2'].astype(float), ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp))
-
-    #     else:
-    #         args = (cat['e1'], cat['e2'], ipix, npix, bool_mask, mask_apo, count, hm.purify_e, hm.purify_b, wsp_filename) # self.nside, hm.lmax, hm.nlb)
-    #         _multiple_results = [hm.pool.apply_async(_multiproc_randrot_cls, (len(_x), args, pos+1)) for pos, _x in enumerate(np.array_split(range(nrandom), hm.nproc)) if len(_x)>0]
-    #         for res in self.prog(_multiple_results, desc='{}._compute_random_auto_cls [bin {}]<{}>'.format(self.obs_name, ibin, os.getpid()), position=0):
-    #             _cls += res.get()
-    #         print("\n")
-
-    #     return np.array(_cls)
 
     def plot_auto_cls(self, hm, remove_Nl=False, **kwargs):
         cls = {}
@@ -584,27 +460,4 @@ def _randrot_maps(cat_e1, cat_e2, w, ipix, npix, bool_mask, weighted_count):
     e2_map[bool_mask] /= weighted_count[bool_mask]
 
     return e1_map, e2_map
-
-# def _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b):
-#     e1_map, e2_map = _randrot_maps(cat_e1, cat_e2, ipix, npix, bool_mask, count)
-#     return nmt.NmtField(mask_apo, [e1_map, e2_map], purify_e=purify_e, purify_b=purify_b)
-
-# def _randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp):
-#     field = _randrot_field(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b)
-#     cls = compute_master(field, field, wsp)
-#     return cls
-
-
-# def _multiproc_randrot_cls(nsamples, args, pos):
-#     cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp_filename = args
-
-#     wsp = nmt.NmtWorkspace()
-#     wsp.read_from(wsp_filename)
-
-#     _cls = []
-#     for _ in trange(nsamples, desc="[worker {:4d}]<{}>".format(pos,os.getpid()), position=pos, leave=False):
-#         _cls.append(_randrot_cls(cat_e1, cat_e2, ipix, npix, bool_mask, mask_apo, count, purify_e, purify_b, wsp))
-
-#     return _cls
-
 

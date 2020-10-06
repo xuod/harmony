@@ -172,9 +172,6 @@ class Observable(object):
         self.masks_apo = {}
         for ibin in self.prog(self.zbins, desc='{}.make_masks_apo'.format(self.obs_name)):
             self.masks_apo[ibin] = nmt.mask_apodization(self.masks[ibin], aposize=self.aposize, apotype=self.apotype)
-    
-    # def make_fields(self, hm, include_templates=True):
-    #     raise NotImplementedError
 
     def prepare_fields(self):
         raise NotImplementedError
@@ -205,9 +202,6 @@ class Observable(object):
                 raise KeyError("Specified bin is not in field")
         else:
             raise RuntimeError("Fields are not constructed yet, use make_fields first.")
-
-    # def make_randomized_fields(self, hm, ibin, nrandom=1):
-    #     raise NotImplementedError
 
     def make_randomized_maps(self, ibin):
         raise NotImplementedError

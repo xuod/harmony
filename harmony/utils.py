@@ -86,40 +86,6 @@ def bootstrap_chi2(nb, obs, randoms, smooth=False, return_pval=False, pbar=False
     chi2 = np.array(chi2)
     return get_chi2(obs, randoms, smooth=smooth, return_pval=return_pval), np.sqrt(np.var(chi2, ddof=1.))
 
-# def log_ell_bins(lmin, lmax, n_ell_bins):
-#     ell = np.arange(lmin,lmax+1)
-#     bins_ell = np.logspace(np.log10(lmin), np.log10(lmax), n_ell_bins+1)
-#     # Avoid int to float to int rounding errors...
-#     eps = 1e-5
-#     bins_ell[0] = lmin-eps
-#     bins_ell[-1] = lmax+eps
-
-#     # Check that all bins have at least one multipole
-#     assert np.all(np.histogram(ell, bins_ell)[0] > 0)
-
-#     # Digitize and make list
-#     bpws = np.digitize(ell, bins_ell, right=False)
-#     ells = []
-#     for ibin in range(1,n_ell_bins+1):
-#         w = (bpws == ibin)
-#         if np.sum(w)>0:
-#             ells.append(ell[w])
-    
-#     return ells
-
-# def make_nmtbin_logspaced(nside, lmin, lmax, n_ell_bins, f_ell=None, add_extra_bin=False, **kwargs):
-#     if add_extra_bin:
-#         ells = log_ell_bins(lmin, int(lmax*np.exp((np.log(lmax)-np.log(lmin))/n_ell_bins)), n_ell_bins+1)
-#     else:
-#         ells = log_ell_bins(lmin, lmax, n_ell_bins)
-#     bpws = np.concatenate([i*np.ones(len(x), dtype=int) for i,x in enumerate(ells)])
-#     ells = np.concatenate(ells)
-#     if f_ell is not None:
-#         if f_ell=='pixwin':
-#             f_ell = 1./hp.pixwin(nside)[lmin:lmax+1]**2
-#         else:
-#             assert type(f_ell) == np.ndarray
-#     return nmt.NmtBin(nside, ells=ells, bpws=bpws, weights=np.ones(len(ells)), lmax=lmax, f_ell=f_ell, **kwargs)
 
 def make_nmtbin(nside, lmin, lmax, n_ell_bins, bin_func=np.linspace, f_ell=None, verbose=False, b_lmax=None, bins_ell=None, **kwargs):
     # Define ell range
