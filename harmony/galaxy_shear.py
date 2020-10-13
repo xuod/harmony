@@ -401,11 +401,11 @@ class Shear(Observable):
     def compute_noise_auto_cls(self, hm, save_cls=None):
         for ibin in self.prog(self.zbins, desc='{}.compute_variance_maps'.format(self.obs_name)):
             weight = self.cats[ibin]['weight']
-            weight *= len(weight) / np.sum(weight) # normaize weight to number of galaxies
+            # _w = weight * float(len(weight)) / np.sum(weight) # normalize weight to number of galaxies
             var_map = ca.cosmo.make_healpix_map(None, None,
                                             quantity=[0.5*(self.cats[ibin]['e1']**2 + self.cats[ibin]['e2']**2)],
                                             nside=self.nside, fill_UNSEEN=False, # put zeros outside of mask
-                                            mask=None, weight=weight**2, mode='sum', # sum w^2 * e^2
+                                            mask=None, weight=self.cats[ibin]['weight']**2, mode='sum', # sum w^2 * e^2
                                             ipix=self.ipix[ibin], return_w_maps=True,
                                             return_extra=False)[0][0]
             var = np.mean(var_map) * hp.nside2pixarea(self.nside)
