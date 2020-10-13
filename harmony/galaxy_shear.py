@@ -70,7 +70,7 @@ class Shear(Observable):
             self.ipix[ibin] = ipix
         else:
             assert len(ra)==len(dec)==len(e1)==len(e2)
-            assert ipix is NotImplemented
+            assert ipix is None
             self.cats[ibin]['ra'] = ra
             self.cats[ibin]['dec'] = dec
 
