@@ -399,6 +399,12 @@ class Shear(Observable):
             return kappa
 
     def compute_noise_auto_cls(self, hm, save_cls=None):
+        # Need to check weight normalization in that case...
+        if self.mask_mode == 'binary':
+            raise NotImplementedError
+        
+        self.get_ipix()
+
         for ibin in self.prog(self.zbins, desc='{}.compute_variance_maps'.format(self.obs_name)):
             weight = self.cats[ibin]['weight']
             # _w = weight * float(len(weight)) / np.sum(weight) # normalize weight to number of galaxies

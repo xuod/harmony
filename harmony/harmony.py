@@ -485,7 +485,7 @@ class Harmony(object):
                 res += NL
             return res
 
-        cw=nmt.NmtCovarianceWorkspace()
+        # cw=nmt.NmtCovarianceWorkspace()
 
         suffix = ''
         suffix += obsa1.obs_name+str(a1)+'_'
@@ -494,16 +494,16 @@ class Harmony(object):
         suffix += obsb2.obs_name+str(b2)+'.pickle'
         filename = os.path.join(self.config.path_output, self.name, 'cw_{}_nside{}_.pickle'.format(self.config.name, self.nside) + suffix)
         if os.path.exists(filename):
-            cw.read_from(filename)
+            self.cw.read_from(filename)
         else:
-            cw.compute_coupling_coefficients(obsa1.get_field(a1),
+            self.cw.compute_coupling_coefficients(obsa1.get_field(a1),
                                              obsa2.get_field(a2),
                                              obsb1.get_field(b1),
                                              obsb2.get_field(b2)) #<- This is the time-consuming operation
 
-            cw.write_to(filename)
+            self.cw.write_to(filename)
 
-        cov_temp = nmt.gaussian_covariance(cw,
+        cov_temp = nmt.gaussian_covariance(self.cw,
                         obsa1.spin, obsa2.spin, obsb1.spin, obsb2.spin,
                         get_C_ell(obsa1,obsb1,a1,b1),
                         get_C_ell(obsa1,obsb2,a1,b2),
@@ -518,18 +518,25 @@ class Harmony(object):
     def bin_helper(obs, i):
         return obs.zbins.index(i)
     
-    def _twopoint_add_bpws(self, obs_pairs, names, spin_idx=0):
+    def _twopoint_add_bpws(self, obs_pairs, names, fix_pixwin, spin_idx=0):
         filename = self.get_twopoint_filename()
         hdus = fits.open(filename)
         
         for name, (obs1,obs2) in zip(names, obs_pairs):
             for (i1,i2) in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
-                bwps = self.load_workspace_bpws(obs1, obs2, i1, i2)[spin_idx,:,spin_idx,:]
+                f_ell = np.ones(self.b.lmax+1)
+                if fix_pixwin:
+                    f_ell = 1./hp.pixwin(self.nside)[:self.b.lmax+1]**2
+                bwps = self.load_workspace_bpws(obs1, obs2, i1, i2)[spin_idx,:,spin_idx,:] / f_ell
                 hdus.append(fits.ImageHDU(bwps, name='bpws_'+name+'_{}_{}'.format(self.bin_helper(obs1,i1)+1,self.bin_helper(obs2,i2)+1)))
         
+        ell_lims_min = fits.Column(array=np.array([self.b.get_ell_list(_i)[0] for _i in range(self.b.get_n_bands())]), format='I', name='ell_lims_min')
+        ell_lims_max = fits.Column(array=np.array([self.b.get_ell_list(_i)[-1] for _i in range(self.b.get_n_bands())]), format='I', name='ell_lims_max')
+        hdus.append(fits.BinTableHDU.from_columns([ell_lims_min, ell_lims_max], name='ell_lims'))
+
         hdus.writeto(filename, overwrite=True)
 
-    def build_twopoint(self, obs_pairs, names, kernels, C_ell, spin_idx=0, use_C_ell_as_data=False, add_noise_to_C_ell=True, overwrite=False, clobber=False):
+    def build_twopoint(self, obs_pairs, names, kernels, C_ell, fix_pixwin, spin_idx=0, use_C_ell_as_data=False, add_noise_to_C_ell=True, overwrite=False, clobber=False):
         """
         names is a list of names for each obs pair
         kernels is the list of redshift distribution to be used
@@ -550,7 +557,7 @@ class Harmony(object):
         for (obs1, obs2) in self.prog(obs_pairs, desc='Harmony.build_twopoint [data vector]'):
             for (i1,i2) in self.prog(self.cls[(obs1.obs_name, obs2.obs_name)].keys(), desc='[{},{}]'.format(obs1.obs_name, obs2.obs_name)):
                 if use_C_ell_as_data:
-                    values = self.bin_cl_theory(C_ell, obs1, obs2, i1, i2, fix_pixwin=False)
+                    values = self.bin_cl_theory(C_ell, obs1, obs2, i1, i2, fix_pixwin=fix_pixwin)
                 else:
                     values = self.get_cl(obs1, obs2, i1, i2, debias=True)
                 for i in range(n_ell):
@@ -567,6 +574,7 @@ class Harmony(object):
         covmat = np.zeros((total_size, total_size))
 
         # Double loop in same order as above
+        self.cw = nmt.NmtCovarianceWorkspace()
         idxa = 0
         for (obsa1, obsa2) in self.prog(obs_pairs, desc='Harmony.build_twopoint [covariance]'):
             for (a1,a2) in self.prog(self.cls[(obsa1.obs_name, obsa2.obs_name)].keys(), desc='[{},{}]'.format(obsa1.obs_name, obsa2.obs_name)):
@@ -585,6 +593,6 @@ class Harmony(object):
         filename = self.get_twopoint_filename()
         twopointfile.to_fits(filename, overwrite, clobber)
 
-        self._twopoint_add_bpws(obs_pairs, [names[(obs1.kernel, obs2.kernel, obs1.type, obs2.type)] for obs1,obs2 in obs_pairs], spin_idx=spin_idx)
+        self._twopoint_add_bpws(obs_pairs, [names[(obs1.kernel, obs2.kernel, obs1.type, obs2.type)] for obs1,obs2 in obs_pairs], fix_pixwin, spin_idx=spin_idx)
 
 
