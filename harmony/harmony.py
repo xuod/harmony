@@ -442,7 +442,10 @@ class Harmony(object):
 
         spec = twopoint.SpectrumMeasurement(name=name,bins=(np.array(bins1),np.array(bins2)),
                 types=types, kernels=kernels, windows='SAMPLE',
-                angular_bin=np.array(angbin), value=np.array(value))
+                angular_bin=np.array(angbin), value=np.array(value),
+                angle_min=np.array([self.b.get_ell_list(_i)[0] for _i in range(self.b.get_n_bands())]),
+                angle_max=np.array([self.b.get_ell_list(_i)[-1] for _i in range(self.b.get_n_bands())])
+                )
             
         spec.reorder_canonical()
 
@@ -522,6 +525,7 @@ class Harmony(object):
         filename = self.get_twopoint_filename()
         hdus = fits.open(filename)
         
+        # Add bpws
         for name, (obs1,obs2) in zip(names, obs_pairs):
             for (i1,i2) in self.cls[(obs1.obs_name, obs2.obs_name)].keys():
                 f_ell = np.ones(self.b.lmax+1)
@@ -530,9 +534,21 @@ class Harmony(object):
                 bwps = self.load_workspace_bpws(obs1, obs2, i1, i2)[spin_idx,:,spin_idx,:] / f_ell
                 hdus.append(fits.ImageHDU(bwps, name='bpws_'+name+'_{}_{}'.format(self.bin_helper(obs1,i1)+1,self.bin_helper(obs2,i2)+1)))
         
-        ell_lims_min = fits.Column(array=np.array([self.b.get_ell_list(_i)[0] for _i in range(self.b.get_n_bands())]), format='I', name='ell_lims_min')
-        ell_lims_max = fits.Column(array=np.array([self.b.get_ell_list(_i)[-1] for _i in range(self.b.get_n_bands())]), format='I', name='ell_lims_max')
+        # Add true ell limits
+        ell_lims_min = np.array([self.b.get_ell_list(_i)[0] for _i in range(self.b.get_n_bands())])
+        ell_lims_max = np.array([self.b.get_ell_list(_i)[-1] for _i in range(self.b.get_n_bands())])
+        angle_edges = [ell_lims_min[0]-0.5]+list(ell_lims_max+0.5)
+
+        ell_lims_min = fits.Column(array=ell_lims_min, format='I', name='ell_lims_min')
+        ell_lims_max = fits.Column(array=ell_lims_max, format='I', name='ell_lims_max')
         hdus.append(fits.BinTableHDU.from_columns([ell_lims_min, ell_lims_max], name='ell_lims'))
+
+        # Add ell ranges used in binned spectrum within the cosmosis 2pt likelihood
+        for name in names:
+            _ntiles = int(len(self.cls[(obs1.obs_name, obs2.obs_name)].keys()))
+            angle_min = fits.Column(name='ANGLEMIN', format='D', array=np.tile(angle_edges[:-1], _ntiles))
+            angle_max = fits.Column(name='ANGLEMAX', format='D', array=np.tile(angle_edges[1:], _ntiles))
+            hdus[name] = fits.BinTableHDU.from_columns(header=hdus[name].header, columns=hdus[name].columns+fits.ColDefs([angle_min, angle_max]))
 
         hdus.writeto(filename, overwrite=True)
 
@@ -589,6 +605,7 @@ class Harmony(object):
         spectra, covmat_info = builder.generate(covmat, None)
         
         twopointfile = twopoint.TwoPointFile(spectra, kernels, windows='SAMPLE', covmat_info=covmat_info)
+        # twopointfile.reorder_canonical()
         
         filename = self.get_twopoint_filename()
         twopointfile.to_fits(filename, overwrite, clobber)
