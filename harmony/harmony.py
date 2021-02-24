@@ -161,8 +161,21 @@ class Harmony(object):
             obs1_name = obs1
             obs2_name = obs2
 
-        wsp = self.wsp[(obs1_name, obs2_name)][(i1,i2)]
+        # WRONG ! Even if obs1=obs2, EB and BE are also inverted between bins i1 and i2
+        # try:
+        #     wsp = self.wsp[(obs1_name, obs2_name)][(i1,i2)]
+        # except KeyError:
+        #     if obs1 == obs2:
+        #         try:
+        #             wsp = self.wsp[(obs2_name, obs1_name)][(i2,i1)]
+        #         except:
+        #             print("[get_workspace] workspace for observables [{},{}] with bins [{},{}] does not exist.".format(obs1_name, obs2_name, i1, i2))
+        #             wsp = None
+        #     else:
+        #         wsp = None # for different observables with spin 2, the spectra are EE, EB, BE and BB, so EB and BE would be inverted...
 
+        wsp = self.wsp[(obs1_name, obs2_name)][(i1,i2)]
+        
         if wsp is not None:
             return wsp
         else:
@@ -176,6 +189,33 @@ class Harmony(object):
             bpws = self.load_workspace_bpws(obs1, obs2, i1, i2)
             return bpws
 
+    def get_workspace_binning_decoupling_matrix(self, obs1, obs2, i1, i2, save=True, icl=0):
+        print("[get_workspace_binning_decoupling_matrix] Warning: this does not account for f_ell")
+        wsp = self.get_workspace(obs1, obs2, i1, i2)
+
+        # nell = self.b.lmax+1
+        # coupling = wsp.get_coupling_matrix()[icl*nell:(icl+1)*nell,:][:,icl*nell:(icl+1)*nell]
+        # WRONG, see NaMaster doc : The assumed ordering of power spectra is such that the l-th element of the i-th power spectrum be stored with index l * n_cls + i.
+        n_cls =  max(1,obs1.spin)*max(1,obs2.spin)
+        print("[get_workspace_binning_decoupling_matrix] Using {} spectra for obs1 and ob2 with spins {} and {}.".format(n_cls, obs1.spin, obs2.spin))
+        coupling = wsp.get_coupling_matrix()[icl::n_cls,:][:,icl::n_cls]
+
+        binning = np.zeros((self.b.get_n_bands(),self.b.lmax+1))
+        binning_w = np.zeros((self.b.get_n_bands(),self.b.lmax+1))
+        for i in range(self.b.get_n_bands()):
+            binning[i,self.b.get_ell_list(i)] = 1.
+            binning_w[i,self.b.get_ell_list(i)] = self.b.get_weight_list(i)
+
+        binned_coupling = np.dot(binning_w, np.dot(coupling, binning.T))
+        inv_binned_coupling = np.linalg.inv(binned_coupling)
+        binning_decoupling_matrix = np.dot(inv_binned_coupling, binning_w)
+
+        if save:
+            filename = self.get_workspace_filename(obs1, obs2, i1, i2)
+            np.save(filename[:-4]+'_binning_decoupling_matrix.npy', binning_decoupling_matrix)
+        
+        return binning_decoupling_matrix, inv_binned_coupling
+        
     def save_cls(self, ext=None):
         make_directory(self.config.path_output+'/'+self.name)
         filename = os.path.join(self.config.path_output, self.name, 'cls_{}_nside{}.pickle'.format(self.config.name, self.nside))
@@ -472,21 +512,43 @@ class Harmony(object):
                 out -= np.mean(self.cls[(obs1_name, obs2_name)][(i1,i2)]['random'], axis=0)            
             return out
 
-    def _compute_gaussian_covariance_block(self, obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=True):
+    def _compute_gaussian_covariance_block(self, obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=True, improved_NKA=False):
 
         def spin_help(obs1, obs2):
             return max(1,obs1.spin)*max(1,obs2.spin)
         n_ell = self.b.get_n_bands()
 
-        def get_C_ell(obs1, obs2, i1, i2, add_noise=add_noise_to_C_ell):
-            res = np.copy(C_ell[(obs1.obs_name,obs2.obs_name)][(i1,i2)])
-            if add_noise and obs1==obs2 and i1==i2:
-                NL = self.b.unbin_cell(self.cls[(obs1.obs_name,obs2.obs_name)][(i1,i2)]['random'].mean(axis=0))
-                lowest_ell = self.b.get_ell_list(0)[0]
-                for i in range(NL.shape[0]):
-                    NL[i,:lowest_ell] = NL[i,lowest_ell]
-                res += NL
-            return res
+        def get_C_ell(obs1, obs2, i1, i2, add_noise=add_noise_to_C_ell, improved_NKA=improved_NKA):
+            if (obs1, obs2, i1, i2) in self.C_ell_cov.keys():
+                return self.C_ell_cov[obs1, obs2, i1, i2]
+            else:
+                res = np.copy(C_ell[(obs1.obs_name,obs2.obs_name)][(i1,i2)])
+                if add_noise and obs1==obs2 and i1==i2:
+                    NL = self.b.unbin_cell(self.cls[(obs1.obs_name,obs2.obs_name)][(i1,i2)]['random'].mean(axis=0))
+                    lowest_ell = self.b.get_ell_list(0)[0]
+                    for i in range(NL.shape[0]):
+                        NL[i,:lowest_ell] = NL[i,lowest_ell]
+                    res += NL
+
+                if improved_NKA:
+                    print("[_compute_gaussian_covariance_block] using improved NKA on {},{} [{},{}]".format(obs1.obs_name, obs2.obs_name, i1, i2))
+                    try:
+                        wsp = self.get_workspace(obs1, obs2, i1, i2)
+                    except KeyError:
+                        try:
+                            wsp = self.load_workspace(obs1, obs2, i1, i2)
+                        except RuntimeError:
+                            print("[_compute_gaussian_covariance_block] preparing workspace for this pair...")
+                            wsp = self.prepare_workspace(obs1, obs2, i1, i2)
+                    coupling = wsp.get_coupling_matrix()
+                    re_coupling = np.reshape(coupling, newshape=(spin_help(obs1, obs2), self.b.lmax+1, spin_help(obs1, obs2), self.b.lmax+1), order='F')
+                    cl_tilde = np.tensordot(re_coupling, res) / np.mean(obs1.masks_apo[i1] * obs2.masks_apo[i2])
+                    assert cl_tilde.shape == res.shape
+                    res = cl_tilde
+
+                self.C_ell_cov[obs1, obs2, i1, i2] = np.copy(res)
+
+                return res
 
         # cw=nmt.NmtCovarianceWorkspace()
 
@@ -552,7 +614,7 @@ class Harmony(object):
 
         hdus.writeto(filename, overwrite=True)
 
-    def build_twopoint(self, obs_pairs, names, kernels, C_ell, fix_pixwin, spin_idx=0, use_C_ell_as_data=False, add_noise_to_C_ell=True, overwrite=False, clobber=False):
+    def build_twopoint(self, obs_pairs, names, kernels, C_ell, fix_pixwin, spin_idx=0, use_C_ell_as_data=False, add_noise_to_C_ell=True, overwrite=False, clobber=False, improved_NKA=False):
         """
         names is a list of names for each obs pair
         kernels is the list of redshift distribution to be used
@@ -591,13 +653,14 @@ class Harmony(object):
 
         # Double loop in same order as above
         self.cw = nmt.NmtCovarianceWorkspace()
+        self.C_ell_cov = {}
         idxa = 0
         for (obsa1, obsa2) in self.prog(obs_pairs, desc='Harmony.build_twopoint [covariance]'):
             for (a1,a2) in self.prog(self.cls[(obsa1.obs_name, obsa2.obs_name)].keys(), desc='[{},{}]'.format(obsa1.obs_name, obsa2.obs_name)):
                 idxb = 0
                 for (obsb1, obsb2) in obs_pairs:
                     for (b1,b2) in self.cls[(obsb1.obs_name, obsb2.obs_name)].keys():
-                        covmat[idxa:idxa+n_ell,idxb:idxb+n_ell] = self._compute_gaussian_covariance_block(obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=add_noise_to_C_ell)[:,spin_idx,:,spin_idx]
+                        covmat[idxa:idxa+n_ell,idxb:idxb+n_ell] = self._compute_gaussian_covariance_block(obsa1, obsa2, obsb1, obsb2, a1, a2, b1, b2, C_ell, add_noise_to_C_ell=add_noise_to_C_ell, improved_NKA=improved_NKA)[:,spin_idx,:,spin_idx]
                         idxb += n_ell
                 idxa += n_ell
 
