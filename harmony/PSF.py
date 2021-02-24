@@ -2,6 +2,7 @@ from .observable import Observable
 from .galaxy_shear import Shear
 from astropy.io import fits
 import healpy as hp
+import numpy as np
 
 class PSF(Shear):
     def __init__(self, config, nside, mask_mode, psf_filepath, include_obs=False, include_w=False, *args, **kwargs):
@@ -27,8 +28,8 @@ class PSF(Shear):
 
         for ibin in self.zbins:
             self.cats[ibin] = {}
-            self.cats[ibin]['ra'] = data['ra']
-            self.cats[ibin]['dec'] = data['dec']
+            self.cats[ibin]['ra'] = data['ra'].astype(float)
+            self.cats[ibin]['dec'] = data['dec'].astype(float)
 
         if self.include_obs:
             # PSF rescaled by size (w)
@@ -45,5 +46,5 @@ class PSF(Shear):
             self.cats['w']['e1'] = data['obs_e1'] * (1. - data['obs_T']/data['piff_T'])
             self.cats['w']['e2'] = data['obs_e2'] * (1. - data['obs_T']/data['piff_T'])
         for k in self.cats.keys():
-            self.cats[k]['weight'] = np.ones_like(self.cats[k]['e1'])
+            self.cats[k]['weight'] = np.ones(len(self.cats[k]['e1']), dtype=float)
 

@@ -206,6 +206,7 @@ class Shear(Observable):
         self.get_ipix()
         for ibin in self.prog(self.zbins, desc='{}.make_maps'.format(self.obs_name)):
             cat = self.cats[ibin]
+            print(len(self.ipix[ibin]))
             quantities, count, mask, sum_w_maps = ca.cosmo.make_healpix_map(None, None,
                                                     quantity=[cat[_x] for _x in keys],
                                                     nside=self.nside, fill_UNSEEN=True,
@@ -216,6 +217,7 @@ class Shear(Observable):
                 self.maps[ibin][key] = quantities[j]
 
             # Count cut
+            assert len(self.ipix[ibin]) == int(np.sum(count))
             count_cut_mask = (count>self.count_cut)
 
             self.maps[ibin]['count'] = count * count_cut_mask.astype(int)
