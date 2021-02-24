@@ -44,4 +44,6 @@ class PSF(Shear):
             # PSF rescaled by size (w)
             self.cats['w']['e1'] = data['obs_e1'] * (1. - data['obs_T']/data['piff_T'])
             self.cats['w']['e2'] = data['obs_e2'] * (1. - data['obs_T']/data['piff_T'])
+        for k in self.cats.keys():
+            self.cats[k]['weight'] = np.ones_like(self.cats[k]['e1'])
 
